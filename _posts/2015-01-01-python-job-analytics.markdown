@@ -5,23 +5,28 @@ date:   2015-01-01 14:34:42
 categories: python pandas
 ---
 
-In this post I'm doing some simple data analytics of python job
-data using Python Pandas. 
+In this post I'm doing some simple data analytics of job market for python
+programmes. I will be using [Python Pandas](http://pandas.pydata.org/)
 
-My (rather small) dataset comes from reed.co.uk - which is UK
-job posting. I wrote simple scrapy script that crawls reed.co.uk 
-python job section, and parses all ads it finds. I've chosen this
-specific job board because in contrast with other sites of this 
-type it displays interesting information about each post. 
+My dataset comes from [reed.co.uk](http://www.reed.co.uk/jobs?keywords=python) - UK
+job board. I created Scrapy script that crawls reed.co.uk 
+python job section, and parses all ads it finds.  While
+crawling I set high download delay of 2 seconds, low number of max
+concurrent requests per domain and added descriptive user agent header 
+linking back to my blog. If you are interested in source code for spider let me know.
 
-Aside from usual rather uninteresting marketing blah blah of job description
-it shows interesting information about each position - salary range,
-number of applications, and also date posted. 
+I've chosen this specific job board because in contrast with other sites of this 
+type it displays interesting information about each post.
+Aside from boring marketing speech describing how exciting each 
+position is, reed shows more interesting facts about each position such as
+salary range and number of applications. I was curious if one can find some patterns
+in all this, also analyzing this data is good way to learn/demonstrate
+some Python Pandas functions. 
 
-I was curious if one can find some patterns
-in all this and thought it's a good way to learn some Python Pandas functions. 
+My data is stored in .csv file that has 615 records, all job ads found when searching
+for Python, you can [download it here](https://docs.google.com/uc?id=0B6myg3n6dqcVblo5MzBzZjQ3TEk&export=download)
 
-Our data can be downloaded [here](http://sport.pl), let's feed it to Panda.
+Let's feed our data to Pandas.
 
 {% highlight python %}
 
@@ -32,20 +37,20 @@ Out[3]: Index([u'salary_min', u'description', u'title', u'salary_max', u'applica
 
 {% endhighlight %}
 
-Since my data comes from internet it made sense to do some slight normalizations
-at the level of extraction. For example dates on reed are displayed either as 
-specific date in format 24 December, or as string 'just now' or 'tomorrow', so 
-if we want to get proper dates I had to use some regular expressions to extract
-proper data and then format all as ISO date string. Similarly with salary data
-it could be either posted as string 'From 20000 to 30000' or just '20000', 
-usually it's per year, but sometimes there was string 'per week'. I decided
-to use two fields: "salary_max" which is higher value of salary range, and
-"salary_min" as lower value. If there was only one value posted I assumed this
-is higher value. 
+Since my data comes from Internet it made sense to do some normalization
+at the level of extraction. What you get in .csv is not exactly raw data, it is 
+partly processed. For example dates on reed are displayed either as 
+specific date in 'day month' format (e.g. '24 December'), or as string 'just now' or 'yesterday', so 
+I had to use some regular expressions to extract proper data and then format all 
+as ISO date string. Similarly with salary data it could be either posted as string 
+'From 20 000 to 30 000' or just '20 000 per annum'.
+I decided to use two fields: "salary_max" which is higher value of salary range, and
+"salary_min" as lower value. If there was only one value posted I assumed value
+present is salary_max.
 
-Ok so let's move to some analytics. First of all it makes sense to ask: where 
-those Python jobs are?
+### Location, location, location
 
+First of all it makes sense to ask: where are Python positions located?
 
 {% highlight python %}
 
@@ -65,11 +70,12 @@ dtype: int64
 {% endhighlight %}
 
 If you know UK job market you're probably not suprised by domination of London. 
-Almost 1/3 of all jobs are in London. Cambridge second spot is interesting, 
+Almost 1/3 of all jobs are in London. Cambridge's second spot is interesting, 
 as is high position of Bristol and Reading. 
 
-Out of curiosity let's check what is the situation on job market in those
-10 cities, how many applications per position do we have in top 10 locations?
+Given high amount of open positions in each city, one wonders if market is 
+perhaps saturated in London or Cambridge. 
+How many applications per position do we have in top 10 locations?
 
 Let's create smaller data set with job ads only from top 10 cities for
 Python programmers:
@@ -87,9 +93,7 @@ and now let's see how many applications are there per job post
 {% highlight python %}
 
 In [183]: applications = tops.groupby('location').applications.sum()
-
 In [184]: ads = tops.groupby('location').id.count()
-
 In [185]: applications / ads
 Out[185]: 
 location
@@ -107,24 +111,39 @@ dtype: float64
 
 {% endhighlight %}
 
-Seems like everyone wants to work in London and no one wants work in Cambridge, 
-Reading. Bristol looks like more attractive place to live but nothing beats 
-attractiveness of London. Devon has unusually high number of applications
+Seems like everyone wants to work in London and no one wants work in Manchester 
+and Cambridge. Bristol attracts talent as does Oxford, but keep in mind low 
+number of positions there. Devon has unusually high number of applications
 per ad, which seems interesting.
 
-Let's check if our calculations are correct (I'm no data science expert, worth
-double checking all my calculations).
+Let's check if our calculations are correct (as you read my post please feel free
+to check all my calculations, also let me know if there is some smarter, easier way
+of getting some specific result).
 
 {% highlight python %}
+In [371]: cam = data[data.location=='Cambridge'].applications.sum() / float(data[data.location == 'Cambridge'].id.count())
+In [372]: cam
+Out[372]: 2.5238095238095237
 
-In [196]: data[data.location == 'Cambridge'][['location', 'applications']]
+{% endhighlight %}
+
+### What determines number of applications
+
+When browsing data you quickly notice uneven distribution of applications.
+Some positions have zero applications, and some have relatively high number. For
+example this query will give you number of applicantions for each Cambridge job.
+
+{% highlight python %}
+In [373]: data[data.location == 'Cambridge'][['location', 'applications']]
 
 {% endhighlight %}
 
 You can see lots of ads with zero applications and some unusually popular posts.
-Why are some ads attracting 17 applicants while other attract zero? We will
-try to explain this later. Perhaps higher salary is involved? Let's check most 
-popular job ad for Cambridge.
+One position is particularly attractive, it attract 17 applicants. 
+
+Why are there so many applications there? 
+
+Is it the salary? 
 
 {% highlight python %}
 
@@ -134,11 +153,11 @@ Out[222]:
 445            17         NaN        
 
 {% endhighlight %}
-No it's not the salary, salary is not disclosed, and most of the time in reed
-if it's not shown it means there it's not high. Why is it so attractive? 
-Nothing in my data explains it so I had to follow link (I store all links to
+
+No, salary is not given. Actually nothing in my data 
+explains why this position is so popular so I had to follow link (I store all links to
 job records in link columns, this is mostly for testing of accuracy of data
-extraction)
+extraction), perhaps I missed something?
 
 {% highlight python %}
 In [238]: data[data.applications == top_ad][data.location == 'Cambridge'].link.values
@@ -151,10 +170,39 @@ that it's just entry level position, keywords "graduate" probably attract
 people without experience with Python, so this would explain high application
 rate.
 
+This got me thinking: is there a strong link between a post being
+entry level position and high number of applicants? We could do some
+natural language processing to identify entry level positions, but 
+this would probably require separate blog article, so for now, let's just
+try checking if some keyword is present in description, for example
+keyword 'graduate'.
+
+{% highlight python %}
+
+In [389]: filter = data.description.str.contains('graduate', case=False)
+# mean of applications if there is keyword 'graduate' in description
+In [390]: data[filter].applications.mean()
+Out[390]: 12.0
+# 'graduate' not present in description
+In [391]: data[filter == False].applications.mean()
+Out[391]: 4.3551236749116606
+# mean salary if 'graduate' in description
+In [392]: data[filter].salary_max.mean()
+Out[392]: 27714.285714285714
+# mean salary if 'graduate' not in description
+In [393]: data[filter == False].salary_max.mean()
+Out[393]: 62014.893506493507
+
+{% endhighlight %}
+
+Which in nutshell means: if you have some experience in Python 
+you have on average 4 competitors to your position. Given that the most of the 
+time recruiters are inviting 4-5 people to interview, you should probably get to interview 
+if you worked with Python before.
+
 ### Salaries
 
-To get data about salary:
-
+To get data about salary grouped by location:
 
 {% highlight python %}
 In [244]: tops.groupby('location').salary_max.mean()
@@ -189,9 +237,9 @@ Name: salary_min, dtype: float64
 
 {% endhighlight %}
 
-Two things are strange here, unusually high values for Berkhamstead
+Two things are strange here, unusually high values for Berkhamsted
 and USA and absolutely no wage data for Devon. Are people really getting
-that much in Berhamstead and USA?
+that much in Berhamsted and USA?
 
 As a side note, the fact that we have USA in our data set is because
 of inconsitency in job postings on reed. For UK posts location is specified
@@ -200,7 +248,7 @@ actual US city where position is located we would have to parse description
 which would be difficult to do, so I decided to keep it as it is without
 normalizing this to city string.
 
-So are these wages in Berkhamsted so high? I suspected either cheating here
+Are these wages in Berkhamsted so high? I suspected either cheating here
 or error in my script extracting data, so to actually check this I had to
 follow those links and see raw data. 
 
@@ -210,11 +258,10 @@ agency that uses this trick is responsible for 10 job postings
 out of all 15 Python jobs in Berkhamsted it is natural that it distorts
 results. What's more this job is actually not work of Python 
 programmer, but was caught in our results because of reed indexing
-which caught reference to monty Python. 
+which caught reference to monty python. 
 
 And for USA jobs? Are they really getting so much more then UK engineers?
-This can be clarified if we actually look at descriptions of those jobs
-we quickly realize that higher values are because of 
+Let's look at descriptions...
 
 {% highlight python %}
 
@@ -231,19 +278,15 @@ array([ 'Software Developer - C & Linux/Unix - San Francisco - To c.$150,000 + b
 
 {% endhighlight %}
 
-All salaries are given in dollars not in pounds, so actual difference is not 
-that big. But still even after adjusting to pound it seems that US salaries
+All salaries are given in dollars not in pounds! Actual difference is not as
+big as it seems. Yet even after adjusting to pound it seems that US salaries
 are much higher at around 84-100k per annum. Whether actual take home wages
 are higher in US is not completely evident. When comparing salaries between
-two countries you have to ask if you really compare apple to apples. Do they
-really include all taxes, social security contributions and health care
-payments in those US salaries? Perhaps they publish salaries without tax in US
-and with tax in UK, just like they publish prices of goods (in US they often
-give you price without tax, in UK you always have total price). 
-
-Looking at salary data you can see that Manchester is actually quite attractive.
-Only around 2 applications per position and wages that are on average higher from
-those in London, where there is considerable crowd of 7 applicatns per position.
+two countries you have to ask yourself if you really compare apple to apples. 
+Taxes, social security contributions and health care make a big difference to
+actual take home pay and it is not clear if they are always specified in same way.
+Perhaps they publish salaries without tax in US and with tax in UK, 
+just like they publish prices of goods with tax in UK and without tax in US.
 
 Finally aggregate data for UK as a whole:
 
@@ -257,72 +300,29 @@ Out[264]: 46540.220338983054
 
 {% endhighlight %}
 
-Open questions:
+### Position without applicants
 
-is there always a correlation between entry level position and number of 
-applicants, as in case of this most popular Cambridge ad? 
-
-{% highlight python %}
-
-In [277]: data[data.description.str.contains('graduate', case=False)].applications.mean()
-Out[277]: 12.0
-
-In [278]: data[data.description.str.contains('graduate', case=False) == False].applications.mean()
-Out[278]: 4.3551236749116606
-
-In [279]: data[data.description.str.contains('graduate', case=False) == False].salary_max.mean()
-Out[279]: 62014.893506493507
-
-In [280]: data[data.description.str.contains('graduate', case=False)].salary_max.mean()
-Out[280]: 27714.285714285714
-
-{% endhighlight %}
-
-Which in nutshell means: if you have more then one year of experience in Python 
-you have on average 4 competitors to your position. Given that the way agencies
-work (inviting 4-5 people per interview), you should get to interview stage in
-UK.
-
-### Zero applicants
-
-
-
+One interesting thing about job market for Python programmers is unusually
+high number of positions for which there is no applications.
 {% highlight python %}
 In [88]: zeros = data[data.applications.eq(0)]
-
+In [89]: zeros.id.count()
+Out[89]: 101
 {% endhighlight %}
 
-Why are there no applicants for these position? First of all maybe they were just
-recently published and noone had the time to apply yet. Luckily I'm storing
-date published and date found in my data, so we can get number of days each add
-is on market from these fields. My script stores both dates as isoformat string.
-So to caluclate time deltas we need to actually bring it back to Python's datetime
-object, we can do this with this simple function. o
+One out of six jobs has zero applications. It has to be difficult to find
+experienced python dev these days. 
 
+But one can also ask why some positions don't get any interest.
+First of all maybe they were just recently published and noone had the time 
+to apply yet. Luckily I'm storing date published and date found in my data, 
+so we can get number of days each add is on market from these fields. 
+My script stores both dates as isoformat string. To get number of days
+we need to convert isoformat date to timedelta and then to integer.
 
-{% highlight python %}
-In [71]: from dateutil import parser
-
-In [72]: parse_date = lambda date: parser.parse(date)
-
-In [73]: data.found.head(2)
-Out[73]: 
-0    2014-12-26T21:54:34.050102
-1    2014-12-26T21:54:34.052319
-Name: found, dtype: object
-
-In [74]: data.found.apply(parse_date).head(2)
-Out[74]: 
-0   2014-12-26 21:54:34.050102
-1   2014-12-26 21:54:34.052319
-Name: found, dtype: datetime64[ns]
-
-{% endhighlight %}
-
-Now let's eliminate those ads which are on job market for one 
-and two days. To do this we need to actually add new column to our
-dataframe - days on market, or just daysOn which is shorter, and then
-filter by this new column.
+With pandas we can actually easily add new columns to DataFrame, so let's do this.
+I will add new column "daysOn" - that contains timedelta between date published
+and date found by my spider.
 
 Adding new column is simple, just assign another series to DataFrame:
 
@@ -350,7 +350,6 @@ each ad was found. Note that we're using [numpy datetime](http://docs.scipy.org/
 slighly different api from python's native datetime.timedelta object
 To actually get number of days we need to cast our timedelta to int
 and representing number of days.o
-
 
 {% highlight python %}
 
@@ -380,7 +379,18 @@ Out[309]:
 
 {% endhighlight %}
 
-Where are those ads for which no one applies?
+At this point 'zeros' frame contains only ads that are on market for more then 
+one day, and no one had applied for them yet. 
+
+Average time on market is two weeks.
+
+{% highlight python %}
+In [337]: zeros.daysOn.mean()
+Out[337]: 14.329787234042554
+
+{% endhighlight %}
+
+Where are those positions located?
 
 {% highlight python %}
 
@@ -396,8 +406,7 @@ Cheltenham          2
 
 {% endhighlight %}
 
-Salary for those position is actually higher from average
-
+Fun fact: salary for those position is actually higher from average.
 
 {% highlight python %}
 
@@ -427,31 +436,20 @@ Name: salary_max, dtype: float64
 
 {% endhighlight %}
 
-Average time on market
-
-
-{% highlight python %}
-In [337]: zeros.daysOn.mean()
-Out[337]: 14.329787234042554
-
-In [338]: 
-
-{% endhighlight %}
-
 What types of jobs are these? Probably those that require lots 
 of experience, we can tell that only two of them contain
 word graduate. Juding by presence of some keywords like: 
 "lead" or "experience" and salary above mean they are probably 
 roles for experienced devs, and description seems scares people off.
 
-
 {% highlight python %}
+# probably not entry level positions, only two of 101 contain 'graduate'
 In [351]: zeros[zeros.description.str.contains('graduate')].id.count()
 Out[351]: 2
-
+# which keywords are present? 'lead'...
 In [358]: zeros[zeros.description.str.contains('lead', case=False)].id.count()
 Out[358]: 42
-
+# ... 'experience' 
 In [359]: zeros[zeros.description.str.contains('experience', case=False)].id.count()
 Out[359]: 40
 {% endhighlight %}
