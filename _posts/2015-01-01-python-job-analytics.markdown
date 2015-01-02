@@ -282,3 +282,176 @@ Which in nutshell means: if you have more then one year of experience in Python
 you have on average 4 competitors to your position. Given that the way agencies
 work (inviting 4-5 people per interview), you should get to interview stage in
 UK.
+
+### Zero applicants
+
+
+
+{% highlight python %}
+In [88]: zeros = data[data.applications.eq(0)]
+
+{% endhighlight %}
+
+Why are there no applicants for these position? First of all maybe they were just
+recently published and noone had the time to apply yet. Luckily I'm storing
+date published and date found in my data, so we can get number of days each add
+is on market from these fields. My script stores both dates as isoformat string.
+So to caluclate time deltas we need to actually bring it back to Python's datetime
+object, we can do this with this simple function. o
+
+
+{% highlight python %}
+In [71]: from dateutil import parser
+
+In [72]: parse_date = lambda date: parser.parse(date)
+
+In [73]: data.found.head(2)
+Out[73]: 
+0    2014-12-26T21:54:34.050102
+1    2014-12-26T21:54:34.052319
+Name: found, dtype: object
+
+In [74]: data.found.apply(parse_date).head(2)
+Out[74]: 
+0   2014-12-26 21:54:34.050102
+1   2014-12-26 21:54:34.052319
+Name: found, dtype: datetime64[ns]
+
+{% endhighlight %}
+
+Now let's eliminate those ads which are on job market for one 
+and two days. To do this we need to actually add new column to our
+dataframe - days on market, or just daysOn which is shorter, and then
+filter by this new column.
+
+Adding new column is simple, just assign another series to DataFrame:
+
+{% highlight python %}
+
+In [291]: zeros["daysOn"] = zeros.found.astype(np.datetime64) - zeros.published.astype(np.datetime64)
+
+In [292]: zeros[["found", "published", "daysOn"]].head(3)
+Out[292]: 
+                        found                   published  \
+0  2014-12-26T21:54:34.050102  2014-12-22T21:54:34.049654   
+2  2014-12-26T21:54:34.054577  2014-12-22T21:54:34.054197   
+5  2014-12-26T21:54:34.063716  2014-12-26T21:54:34.063350   
+
+                  daysOn  
+0 4 days 00:00:00.000448  
+2 4 days 00:00:00.000380  
+5 0 days 00:00:00.000366  
+
+{% endhighlight %}
+
+At this point we have extra column "daysOn" which contains timedelta object
+representing time that passed between date of publication and date when
+each ad was found. Note that we're using [numpy datetime](http://docs.scipy.org/doc/numpy/reference/arrays.datetime.html) which exposes
+slighly different api from python's native datetime.timedelta object
+To actually get number of days we need to cast our timedelta to int
+and representing number of days.o
+
+
+{% highlight python %}
+
+In [293]: zeros.daysOn = zeros.daysOn.apply(lambda a:np.timedelta64(a, 'D').astype(int))
+
+In [294]: zeros[["found", "published", "daysOn"]].head(3)
+Out[294]: 
+                        found                   published  daysOn
+0  2014-12-26T21:54:34.050102  2014-12-22T21:54:34.049654       4
+2  2014-12-26T21:54:34.054577  2014-12-22T21:54:34.054197       4
+5  2014-12-26T21:54:34.063716  2014-12-26T21:54:34.063350       0
+
+{% endhighlight %}
+
+Now let's eliminate those ads which are on job market only for zero days
+
+{% highlight python %}
+
+In [307]: zeros = zeros[zeros.daysOn.eq(0) == False]
+
+In [309]: zeros[["found", "published", "daysOn"]].head(3)
+Out[309]: 
+                         found                   published  daysOn
+0   2014-12-26T21:54:34.050102  2014-12-22T21:54:34.049654       4
+2   2014-12-26T21:54:34.054577  2014-12-22T21:54:34.054197       4
+12  2014-12-26T21:54:34.081788         2014-12-17T00:00:00       9
+
+{% endhighlight %}
+
+Where are those ads for which no one applies?
+
+{% highlight python %}
+
+In [311]: zeros.location.value_counts()
+Out[311]: 
+London             25
+Cambridge          13
+Manchester          6
+Southampton         3
+Surrey              3
+Bristol             2
+Cheltenham          2
+
+{% endhighlight %}
+
+Salary for those position is actually higher from average
+
+
+{% highlight python %}
+
+In [315]: zeros.salary_max.describe()
+Out[315]: 
+count        58.000000
+mean      66736.793103
+std       46585.508446
+min       28000.000000
+25%       40000.000000
+50%       56300.000000
+75%       75000.000000
+max      276000.000000
+Name: salary_max, dtype: float64
+
+In [316]: data.salary_max.describe()
+Out[316]: 
+count       413.000000
+mean      59689.428571
+std       43279.344537
+min       22000.000000
+25%       36000.000000
+50%       50000.000000
+75%       65000.000000
+max      276000.000000
+Name: salary_max, dtype: float64
+
+{% endhighlight %}
+
+Average time on market
+
+
+{% highlight python %}
+In [337]: zeros.daysOn.mean()
+Out[337]: 14.329787234042554
+
+In [338]: 
+
+{% endhighlight %}
+
+What types of jobs are these? Probably those that require lots 
+of experience, we can tell that only two of them contain
+word graduate. Juding by presence of some keywords like: 
+"lead" or "experience" and salary above mean they are probably 
+roles for experienced devs, and description seems scares people off.
+
+
+{% highlight python %}
+In [351]: zeros[zeros.description.str.contains('graduate')].id.count()
+Out[351]: 2
+
+In [358]: zeros[zeros.description.str.contains('lead', case=False)].id.count()
+Out[358]: 42
+
+In [359]: zeros[zeros.description.str.contains('experience', case=False)].id.count()
+Out[359]: 40
+{% endhighlight %}
