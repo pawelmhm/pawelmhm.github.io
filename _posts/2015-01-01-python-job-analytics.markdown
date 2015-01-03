@@ -1,15 +1,17 @@
 ---
 layout: post
-title:  "Analyzing job market for Python with pandas"
+title:  "Analyzing Python Job Market with Pandas"
 date:   2015-01-01 14:34:42
 categories: python pandas
+author: Pawel Miech
+keywords: python pandas job market
 ---
 
 In this post I'm doing some simple data analytics of job market for python
 programmes. I will be using [Python Pandas](http://pandas.pydata.org/)
 
 My dataset comes from [reed.co.uk](http://www.reed.co.uk/jobs?keywords=python) - UK
-job board. I created Scrapy script that crawls reed.co.uk 
+job board. I created simple [Scrapy](http://scrapy.org/) project that crawls reed.co.uk 
 python job section, and parses all ads it finds.  While
 crawling I set high download delay of 2 seconds, low number of max
 concurrent requests per domain and added descriptive user agent header 
@@ -453,3 +455,6 @@ Out[358]: 42
 In [359]: zeros[zeros.description.str.contains('experience', case=False)].id.count()
 Out[359]: 40
 {% endhighlight %}
+
+I think we've got quite an insight into Python job market at this point. There are still 
+some interesting questions to ask but I think we can safely leave them for part two
