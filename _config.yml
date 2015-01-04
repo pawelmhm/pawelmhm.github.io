@@ -1,6 +1,6 @@
 # Site settings
 title: Python programming, web, data science
-email: your-email@domain.com
+email: pawelmhm+github_blog@gmail.com
 description: > # this means to ignore newlines until "baseurl:"
     Blog about x,y and z.
 baseurl: "" # the subpath of your site, e.g. /blog/
