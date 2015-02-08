@@ -24,7 +24,7 @@ def questions():
     questions_data = []
     client = MongoClient("localhost", 27017)
     db = client["stack_questions"]
-    coll = db["questions_test"]
+    coll = db["questions"]
 
     for entry in root.xpath(".//entry"):
         author = "".join(entry.xpath(".//author/name/text()"))
