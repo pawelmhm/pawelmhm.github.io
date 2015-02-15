@@ -8,6 +8,7 @@
 settings_local.py
 .scrapy.cfg
 *.DS_Store
+*.sass*
 
 # development stuff
 /dev/
