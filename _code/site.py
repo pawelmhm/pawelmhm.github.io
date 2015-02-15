@@ -2,6 +2,7 @@ import json
 
 from pymongo import MongoClient
 import cherrypy
+from os import path, curdir
 
 class StackMirror(object):
     db = MongoClient("localhost", 27017)["stack_questions"]
@@ -21,4 +22,6 @@ class StackMirror(object):
                     "fetched", direction=-1)
         return json.dumps([e for e in records])
 
-cherrypy.quickstart(StackMirror())
+cherrypy.quickstart(StackMirror(), "/", { "/static": {
+                        "tools.staticfile.on": True,
+                        "tools.staticfile.filename" : path.join(path.abspath(curdir), "realtime.js")}})
