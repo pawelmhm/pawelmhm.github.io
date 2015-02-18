@@ -1,5 +1,5 @@
-
 from datetime import timedelta
+
 CELERYBEAT_SCHEDULE = {
     "poll_SO": {
         "task": "stack_scrap.questions",
@@ -7,5 +7,3 @@ CELERYBEAT_SCHEDULE = {
         "args": []
     }
 }
-CELERY_TASK_SERIALIZER="json"
-CELERY_ACCEPT_CONTENT = ['pickle', 'json', 'msgpack', 'yaml']

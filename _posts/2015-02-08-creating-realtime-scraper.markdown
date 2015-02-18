@@ -7,26 +7,27 @@ author: Pawel Miech
 keywords: celery, cherrypy, mongodb, python, javascript
 ---
 
-In this post I'd like to create demo realtime Stack Overflow mirror with Celery, 
-CherryPy, MongoDB. By realtime I mean that app will fetch results
+In this post I'd like to create demo realtime Stack Overflow mirror with 
+[Celery](http://www.celeryproject.org/), [CherryPy](http://www.cherrypy.org/)
+and MongoDB. By realtime I mean that app will fetch results
 from remote resource in short intervals, and it will display results 
-in simple one page js-html app without doing refresh. 
+in simple one page js-html app without user clicking browser refresh button.
 
 Design for the whole project is quite simple. First we'll create 
-basic HTTP client that will connect to Stack Overflow xml and parse results.
-The client will be synchronous, created with python requests. Script will 
-be refactored into periodic task running with Celery beat scheduler. It will 
-run at regular intervals, check if there are new questions in SO, if there
+basic HTTP client that will connect to [Stack Overflow xml feed](http://stackoverflow.com/feeds) and parse results.
+The client itself will be synchronous, created with python-requests,
+but it will be executed as periodic task running with Celery beat scheduler. 
+It will run at regular intervals, check if there are new questions in SO, if there
 are, it will insert them into database.
 
 To this I'll add simple REST-ful backend that will return results in JSON.
-Endpoint will accept timestamp parameter, api will return all results
+Endpoint will accept timestamp parameter, API will return all results
 fetched from Stack Overflow after time designated by timestamp. I'm going
-to use CherryPy just because it's simple and easy to get started with. 
-CherryPy has really flat learning curve, if you know some Python you can get
+to use CherryPy because it's simple and easy to get started with. 
+CherryPy has really gentle learning curve, if you know some Python you can get
 up and running in matter of minutes, design of framework seems intuitive, there
 is no overheard of settings, it does not enforce any design paradigm, it
-gives you freedom to do what you'd like to do. 
+gives you freedom to do what you'd like to do.
 
 Our CherryPy app will simply serve static index.html file on root resource,
 it will serve static js script on /static url, and it will have one endpoint 
@@ -36,18 +37,23 @@ Finally I'll add some frontend to whole mixture - trivial JS script polling our
 /update endpoint and appending (or actually prepending) results to DOM. I'm 
 going to use poling instead of websockets, because it's a bit easier to start
 with polling, you remain on the level of simple HTTP GET without having 
-to setup websockets server. Also it seems like polling is in wider use, 
-for exmaple Twitter implementation of timeline and it seems that it uses polling
-in the background, if you go to twitter open dev tools, you'll see plain
-AJAX requests taking place in the background polling with regular intervals.
+to setup websockets server. It also seems like polling is in wider use, 
+while writing this post I checked Twitter implementation of timeline and 
+it seems that it uses polling in the background. 
+If open dev tools while on Twitter timelien, you'll see plain AJAX requests 
+taking place in the background polling with regular intervals. 
 
 ## Simple Stack Overflow Scraper
 
 Fist let's write a client that will parse Stack Overflow feed and get all 
 new questions for us. Recent questions feed is located at: http://stackoverflow.com/feeds,
-it's plain rss xml, that we can easily parse by using xpaths. 
+it's plain rss xml, that we can easily parse by using xpaths. If you prefer
+BeautifulSoup or some other library, nothing should stop you from using it!
+I prefer xpaths only because I use them quite often so I'm familiar with them.
 
 {% highlight python %}
+
+# stack_scrap.py
 
 import re
 from time import time
@@ -96,14 +102,13 @@ def questions():
 {% endhighlight %}
 
 The script simply visits feed and extracts title, link and author
-of the post, it then stores this data into MongoDB. Using hash of
-link as id is there to ensure that duplicate records are not inserted
-into collection, when you try to insert duplicate id in mongodb
+of the post, it then stores this data into MongoDB. We use hash of
+link [as object id](http://docs.mongodb.org/manual/reference/glossary/#term-objectid) to ensure that duplicate records are not inserted
+into collection. When you try to insert duplicate id in mongodb
 it stops this operation and returns an error. If this happens
-we know that we encountered post that we already had, this is
-important as we are plannig to run script at regular intervals 
-and it can well happend that no new questions will be posted
-and client will see same page as before. 
+we know that we encountered post that we already have in database,
+new questions were added to db, and we are starting so see old content
+and we can stop.
 
 You can call 'questions' function, run it normally and perhaps
 print some results to see if it works ok.
@@ -111,28 +116,26 @@ print some results to see if it works ok.
 ## Making our client execute periodically
 
 Now we would like to be able to run our script
-at regular intervals. One simple way to do it would be by
-placing it in a while loop and using time.sleep(). But this
-would be probably not perfect solution, we have to remember
-that our periodic task can fail. If we just place it in 
-a while loop and exception happens execution will simply stop.
-Of course we can add it to while loop with some exception handling
-and some retry logic, but it could involve writing some repetitive
-code. Also imagine having many tasks that you would in this manner, 
-having them all in one while loop with error handling specific
-for each one, it would probably be a nighmare to maintain.
-This is why Celery is such a cool thing, with celery you can 
-execute your code asynchronously, add scheduling, Celery will execute
-them in tehe background. This is good as it isolates it from your other 
-processes, allows you to save resources. It just runs your tasks in a cool way. 
+at regular intervals. As usual there are many ways to do this.
+You can set it up as cron job or you can even use Python's time.sleep()
+if you want to be really pythonic. I'm going to use Celery. Celery is 
+an asynchronous task runner, it allows you to turn your function into
+a task that will be executed in the background. It will nicely handle all
+problems with your script, it can retry task, report problems log what happens
+etc. Running your process in the background and having something that
+manages is properly is huge benefit, your server app can just forget about
+this task, it can do its thing as it normally does without minding task 
+running in the background. 
 
-Making your function a Celery task is easy, we just need to create Celery app
-instance and decorate our task with Celery 'task' decorator
+Turning our Stack scraper into Celery task is easy, we just need to create 
+Celery app instance and decorate our task with Celery 'task' decorator.
 
 {% highlight python %}
 
+# stack_scrap.py
+
 from celery import Celery
-app = Celery("hello" )
+app = Celery("hello world")
 app.config_from_object("celeryconfig")
 
 @app.task
@@ -147,7 +150,10 @@ We'll use following Celery config:
 
 {% highlight python %}
 
+# celeryconfig.py
+
 from datetime import timedelta
+
 CELERYBEAT_SCHEDULE = {
     "poll_SO": {
         "task": "stack_scrap.questions",
@@ -155,8 +161,6 @@ CELERYBEAT_SCHEDULE = {
         "args": []
     }
 }
-CELERY_TASK_SERIALIZER="json"
-CELERY_ACCEPT_CONTENT = ['pickle', 'json', 'msgpack', 'yaml']
 
 {% endhighlight %}
 You need to call it with
@@ -177,11 +181,11 @@ at regular invervals:
 [2015-02-15 19:20:37,528: INFO/MainProcess] Received task: stack_scrap.questions[bba18f4d-ada6-4efa-a490-7fa1e355223d]
 
 {% endhighlight %}
-If you open mongo shell and check yout 'questions' colletion in 'stack_questions'
+If you open mongo shell and check yout 'questions' collection in 'stack_questions'
 database you'll see new posts inserted.
 
 ## Create web app 
-so we have a script that pings Stack Overflow and checks if there are 
+We now have a script that pings Stack Overflow and checks if there are 
 new questions in xml feed. Now time to actually display results
 in a browser. 
 
@@ -229,7 +233,7 @@ this is all you need to start it
 
 {% highlight bash %}
 
-pawel@pawel-VPCEH390X:~/github_blog/pawelmhm.github.io/_code$ python site.py 
+> ~/github_blog/pawelmhm.github.io/_code$ python site.py 
 [15/Feb/2015:19:51:31] ENGINE Listening for SIGHUP.
 [15/Feb/2015:19:51:31] ENGINE Listening for SIGTERM.
 [15/Feb/2015:19:51:31] ENGINE Listening for SIGUSR1.
@@ -241,23 +245,25 @@ pawel@pawel-VPCEH390X:~/github_blog/pawelmhm.github.io/_code$ python site.py
 
 {% endhighlight %}
 
+## Finally let's add some JavaScript
+
 Now that our server is listening for connections we can add some client
 site code. We need a way to update index.html page with results of our crawl.
-How our client side code is going to connect to backend? One solution
-would be websockets, other, I think a bit easier solution would involve
-using JavaScript setTimeout and just repeatingly calling our server /update
-endpoint. 
-
-## Add some JS
+How a browser is going to get results that are up to date? We don't
+want to just click refresh, our app has to be realtime. Users don't like
+to click refresh, they can forget about clicking refresh and loose some 
+crucial content. One solution would be websockets, other easier solution
+would involve using JavaScript setTimeout and just repeatingly calling 
+our server /update endpoint. 
 
 Our client-side code will send ajax GET request to /update endpoint with
 timestamp as sole parameter. When the page first loads timestamp will be
 set to zero and script will fetch all results from database. After
 fetching results it will append them to DOM and add 'modified' attribute
-to div node where fetched nodes are appended. In subsequent calls it will
-take value of this attribute and use it to query server. It will say:
-"hey server give me all results fetched after I last updated DOM", 
-if server doesn't have anything it will respond with blank answer and
+to div. In subsequent calls it will take value of 'modified' attribute and use 
+it to query server. So our JS should essentialy say something like:
+"hey, server, give me all results fetched after I last updated DOM".
+If server doesn't have anything it will respond with blank answer and
 script will do nothing, if there are some new questions fetched by our
 celery stack scraper it will append them to DOM, and refresh 'modified'
 atribute.
@@ -281,16 +287,18 @@ function doPoll() {
 
 {% endhighlight %}
 
-We'll use jQuery always so that the code will set timeouts even in case of failures. 
-Part appending to DOM is rather typical, you could use some js templates,
+We'll use jQuery [always](http://api.jquery.com/deferred.always/) so that the 
+code will set timeouts even in case of failures. 
+
+Part appending to DOM is rather typical, you could use some js templates, 
 like Mustache to make code cleaner and more readable, generating DOM
 from string is probably bad practice but we'll do this here for the
 sake of simplicity.
 
-full JavaScript code:
+Full JavaScript code:
 
 {% highlight javascript %}
-
+// realtime.js
 "use strict";
 
 function append_to_dom(data) {
@@ -316,7 +324,7 @@ function doPoll() {
             "timestamp": parseInt($('#realtime').attr("modified") / 1000) || 0
         }
     }).done(function (data) {
-        // append_to_dom(data);
+        append_to_dom(data);
     }).always(function () {
         setTimeout(doPoll, 5000);
     })
@@ -329,5 +337,7 @@ $(document).ready(function () {
 
 {% endhighlight %}
 
-at this point it's ready, you should start your celery scraper,
+At this point it's ready, you should start your celery scraper,
 launch python site, and you'll see SO questions displayed.
+
+![screenshot]({{site.url}}/_code/out.ogv)

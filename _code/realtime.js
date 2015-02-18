@@ -23,7 +23,7 @@ function doPoll() {
             "timestamp": parseInt($('#realtime').attr("modified") / 1000) || 0
         }
     }).done(function (data) {
-        // append_to_dom(data);
+        append_to_dom(data);
     }).always(function () {
         setTimeout(doPoll, 5000);
     })
