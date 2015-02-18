@@ -1,8 +1,8 @@
 ---
 layout: post
 title:  "Creating simple realtime app with Celery, CherryPy and MongoDb."
-date:   2015-01-01 14:34:42
-categories: realtime, celery, cherrypy, mongodb, javascript, python
+date:   2015-02-15 14:34:42
+categories: python
 author: Pawel Miech
 keywords: celery, cherrypy, mongodb, python, javascript
 ---
