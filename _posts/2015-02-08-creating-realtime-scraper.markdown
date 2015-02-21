@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Creating simple realtime app with Celery, CherryPy and MongoDb."
+title:  "Creating simple realtime app with Celery, CherryPy and MongoDb"
 date:   2015-02-15 14:34:42
 categories: python
 author: Pawel Miech
