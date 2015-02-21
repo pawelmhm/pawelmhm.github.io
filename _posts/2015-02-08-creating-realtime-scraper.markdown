@@ -13,6 +13,8 @@ and MongoDB. By realtime I mean that app will fetch results
 from remote resource in short intervals, and it will display results 
 in simple one page js-html app without user clicking browser refresh button.
 
+** All of the code for this tutorial is placed [in my blog's github account.](https://github.com/pawelmhm/pawelmhm.github.io/tree/master/_code)
+
 Design for the whole project is quite simple. First we'll create 
 basic HTTP client that will connect to [Stack Overflow xml feed](http://stackoverflow.com/feeds) and parse results.
 The client itself will be synchronous, created with python-requests,
@@ -113,7 +115,7 @@ and we can stop.
 You can call 'questions' function, run it normally and perhaps
 print some results to see if it works ok.
 
-## Making our client execute periodically
+## Scheduling our scraper at regular intervals
 
 Now we would like to be able to run our script
 at regular intervals. As usual there are many ways to do this.
@@ -145,8 +147,8 @@ def questions():
 
 {% endhighlight %}
 
-We'll use following Celery config:
-
+Now we need to add Celerybeat schedule that will ensure
+that our task is scheduled every 30 seconds. We'll use following Celery config:
 
 {% highlight python %}
 
@@ -171,9 +173,8 @@ You need to call it with
 
 {% endhighlight %}
 
-You should in logs that Celery is up and running, scheduling task
+You should see in logs that Celery is up and running, scheduling task
 at regular invervals:
-
 
 {% highlight bash %}
 
@@ -186,7 +187,7 @@ database you'll see new posts inserted.
 
 ## Create web app 
 We now have a script that pings Stack Overflow and checks if there are 
-new questions in xml feed. Now time to actually display results
+new questions in xml feed. It's time to actually display results
 in a browser. 
 
 First we need a server that will server some static assets 
@@ -339,5 +340,3 @@ $(document).ready(function () {
 
 At this point it's ready, you should start your celery scraper,
 launch python site, and you'll see SO questions displayed.
-
-![screenshot]({{site.url}}/_code/out.ogv)
