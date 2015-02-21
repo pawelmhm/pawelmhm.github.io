@@ -1,2 +1,30 @@
-_site
-.sass-cache
+.scrapy
+.idea
+/build/
+/dist/
+*.egg-info
+*.pyc
+*.pyo
+settings_local.py
+.scrapy.cfg
+*.DS_Store
+*.sass*
+
+# development stuff
+/dev/
+/src/
+test_urls*
+
+# scrapyd
+twistd.pid
+/dbs/
+/logs/
+/items/
+/scrapyd/
+
+
+# trial
+/_trial_temp/
+_trial_temp.lock
+
+*celerybeat-schedule
