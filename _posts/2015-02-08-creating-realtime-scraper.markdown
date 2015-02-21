@@ -23,27 +23,18 @@ It will run at regular intervals, check if there are new questions in SO, if the
 are, it will insert them into database.
 
 To this I'll add simple REST-ful backend that will return results in JSON.
-Endpoint will accept timestamp parameter, API will return all results
-fetched from Stack Overflow after time designated by timestamp. I'm going
-to use CherryPy because it's simple and easy to get started with. 
+We'll have one endpoint /update. It will accept one parameter 'timestamp',
+and will return all results fetched from Stack Overflow after time designated by 
+timestamp. I'm going to use CherryPy because it's simple and easy.
 CherryPy has really gentle learning curve, if you know some Python you can get
-up and running in matter of minutes, design of framework seems intuitive, there
-is no overheard of settings, it does not enforce any design paradigm, it
-gives you freedom to do what you'd like to do.
-
-Our CherryPy app will simply serve static index.html file on root resource,
-it will serve static js script on /static url, and it will have one endpoint 
-/update that will return results fetched by SO client after certain timestamp. 
+up and running in matter of minutes, design of framework seems intuitive, 
+it does not enforce any design paradigm and gives you freedom to do what you'd like to do.
 
 Finally I'll add some frontend to whole mixture - trivial JS script polling our
 /update endpoint and appending (or actually prepending) results to DOM. I'm 
 going to use poling instead of websockets, because it's a bit easier to start
 with polling, you remain on the level of simple HTTP GET without having 
-to setup websockets server. It also seems like polling is in wider use, 
-while writing this post I checked Twitter implementation of timeline and 
-it seems that it uses polling in the background. 
-If open dev tools while on Twitter timelien, you'll see plain AJAX requests 
-taking place in the background polling with regular intervals. 
+to setup websockets server. 
 
 ## Simple Stack Overflow Scraper
 
@@ -106,25 +97,23 @@ def questions():
 The script simply visits feed and extracts title, link and author
 of the post, it then stores this data into MongoDB. We use hash of
 link [as object id](http://docs.mongodb.org/manual/reference/glossary/#term-objectid) to ensure that duplicate records are not inserted
-into collection. When you try to insert duplicate id in mongodb
-it stops this operation and returns an error. If this happens
-we know that we encountered post that we already have in database,
-new questions were added to db, and we are starting so see old content
-and we can stop.
+into collection. When you try to insert duplicate id mongodb will raise
+exception. If this happens we know that we encountered post that we already 
+have in database, and we can safely stop parsing remaining questions.
 
 You can call 'questions' function, run it normally and perhaps
 print some results to see if it works ok.
 
-## Scheduling our scraper at regular intervals
+## Scheduling our client at regular intervals
 
 Now we would like to be able to run our script
 at regular intervals. As usual there are many ways to do this.
-You can set it up as cron job or you can even use Python's time.sleep()
-if you want to be really pythonic. I'm going to use Celery. Celery is 
-an asynchronous task runner, it allows you to turn your function into
-a task that will be executed in the background. It will nicely handle all
-problems with your script, it can retry task, report problems log what happens
-etc. Running your process in the background and having something that
+You could set it up as cron job, you could use Python's time.sleep(). 
+I'm going to use Celery. Celery is  an asynchronous task runner, 
+it allows you to turn your function into a task that will be executed in the 
+background. It will nicely handle all problems with your script, 
+it can retry task, report problems log what happens etc. 
+Running your process in the background and having something that
 manages is properly is huge benefit, your server app can just forget about
 this task, it can do its thing as it normally does without minding task 
 running in the background. 
