@@ -28,3 +28,5 @@ twistd.pid
 _trial_temp.lock
 
 *celerybeat-schedule
+
+_site
