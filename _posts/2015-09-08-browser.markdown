@@ -1,0 +1,287 @@
+---
+layout: post
+title:  "How To Create Your Own Webkit Browser using Python"
+date:   2015-09-08 14:34:42
+categories: python pyqt qt
+author: Pawel Miech
+keywords: pyqt, webkit
+---
+
+
+In this tutorial we'll create super simple web browser
+for web developers using Python PyQt framework.
+PyQt is a set of Python bindings for Qt framework.
+What is Qt then? Qt (pronounced *cute*) is C++ framework used to create
+GUI-s. To be strict you can use Qt to develop programs without GUI too,
+but developing user interfaces is probably most common thing people do with
+this framework. Main benefit of Qt is that it allows you to create GUI-s
+that are cross platform, your apps can run on various devices using
+native capabilities of each platform without changing your codebase.
+
+Most important thing for this post is that you can just create Webkit browser 
+with PyQt. This is possible because Qt comes with a port Webkit included,
+you just need to import classes you need from PyQt.
+
+Our browser will do following things:
+
+* load urls entered by user into input box
+* show all requests performed while rendering the page
+* allow you to execute custom JavaScript in page context
+
+### Hello Webkit
+
+Let's start with simplest possible use case of PyQt Webkit, let's say you
+just want to load some url, open a window and render page in this window. 
+This is trivial to do, and requires around 13 lines of code (with imports
+and whitespace):
+
+{% highlight python %}
+import sys
+
+from PyQt4.QtWebKit import QWebView
+from PyQt4.QtGui import QApplication
+from PyQt4.QtCore import QUrl
+
+app = QApplication(sys.argv)
+
+browser = QWebView()
+browser.load(QUrl(sys.argv[1]))
+browser.show()
+
+app.exec_()
+
+{% endhighlight %}
+
+If you pass url to script from command line it should load this url and show
+rendered page in window.
+
+### Add some basic GUI
+
+At this point you maybe have something looking like command line browser, which
+is already better than Lynx because it renders JavaScript. But it's not much better
+because you can only pass urls from command line when you invoke it. We 
+definitely need some way of passing urls to load to our browser.
+
+To do this we'll just add input box at the top of the window, user will type url
+into text box, and browser will load this url. We will use QLineEdit widget for 
+input box. Since we will have two elements (text input and browser frame), we'll
+need to add some grid layout to our app.
+
+{% highlight python %}
+
+import sys
+
+from PyQt4.QtGui import QApplication
+from PyQt4.QtCore import QUrl
+from PyQt4.QtWebKit import QWebView
+from PyQt4.QtGui import QGridLayout, QLineEdit, QWidget
+
+
+class UrlInput(QLineEdit):
+    def __init__(self, browser):
+        super(UrlInput, self).__init__()
+        self.browser = browser
+        # add event listener on "enter" pressed
+        self.returnPressed.connect(self._return_pressed)
+
+    def _return_pressed(self):
+        url = QUrl(self.text())
+        # load url into browser frame
+        browser.load(url)
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+
+    # create grid layout
+    grid = QGridLayout()
+    browser = QWebView()
+    url_input = UrlInput(browser)
+    # url_input at row 1 column 0 of our grid
+    grid.addWidget(url_input, 1, 0)
+    # browser frame at row 2 column 0 of our grid
+    grid.addWidget(browser, 2, 0)
+
+    # main app window
+    main_frame = QWidget()
+    main_frame.setLayout(grid)
+    main_frame.show()
+
+    # close app when user closes window
+    sys.exit(app.exec_())
+
+{% endhighlight %}
+
+At this point you have bare-bones browser. You can enter url into input box and 
+your app will load url into browser frame and render all HTML and JavaScript.
+
+### Adding dev tools
+
+Of course the most interesting and important part of every browser are its 
+dev tools. Every browser worth its name should have its developer console. 
+Our Python browser should have some developer tools too. Let's add them.
+
+We'll start by adding something similar to Chrome "network" tab in dev tools.
+We will simply keep track of all requests performed by browser engine while rendering
+page. Requests will be shown in table below main browser frame, for simplicity
+we will only log url, status code and content type of responses.
+
+Do do this we will need to create a table first, we'll use QTableWidget for that,
+Table will have header with field names, it will also auto-resize each time
+new row is added to table.
+
+{% highlight python %}
+
+class RequestsTable(QTableWidget):
+    header = ["url", "status", "content-type"]
+
+    def __init__(self):
+        super(RequestsTable, self).__init__()
+        self.setColumnCount(3)
+        self.setHorizontalHeaderLabels(self.header)
+        header = self.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setResizeMode(QHeaderView.ResizeToContents)
+
+    def update(self, data):
+        last_row = self.rowCount()
+        next_row = last_row + 1
+        self.setRowCount(next_row)
+        for col, dat in enumerate(data, 0):
+            if not dat:
+                continue
+            self.setItem(last_row, col, QTableWidgetItem(dat))
+
+{% endhighlight %}
+
+To keep track of all requests we'll need to get bit deeper into PyQt internals.
+Turns out that Qt exposes NetworkAccessManager class as an API allowing you
+to perform and monitor requests performed by application. We will need to
+subclass NetworkAccessManager, add event listeners we need, and tell our 
+webkit view to use this manager to perform its requests.
+
+
+First let's create our network access manager:
+
+{% highlight python %}
+
+class Manager(QNetworkAccessManager):
+    def __init__(self, table):
+        QNetworkAccessManager.__init__(self)
+        # add event listener on "load finished" event
+        self.finished.connect(self._finished)
+        self.table = table
+
+    def _finished(self, reply):
+        """Update table with headers, status code and url.
+        """
+        headers = reply.rawHeaderPairs()
+        headers = {str(k):str(v) for k,v in headers}
+        content_type = headers.get("Content-Type")
+        url = reply.url().toString()
+        # getting status is bit of a pain
+        status = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
+        status, ok = status.toInt()
+        self.table.update([url, str(status), content_type])
+
+{% endhighlight %}
+
+I have to say that some things in Qt are not as easy and quick as they should be.
+Note how awkward it is to get status code from response. You have to use response
+method .attribute() and pass reference to class property of request. This returns
+QVariant not int and when you convert to int it returns tuple. Sounds like bit of 
+work for very straightforward task after all it is just geting HTTP code of response.
+
+Now finally we have a table and a network access manager. We just need to wire all this
+together.
+
+{% highlight python %}
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+
+    grid = QGridLayout()
+    browser = QWebView()
+    url_input = UrlInput(browser)
+    requests_table = RequestsTable()
+
+    manager = Manager(requests_table)
+    # to tell browser to use network access manager
+    # you need to create instance of QWebPage
+    page = QWebPage()
+    page.setNetworkAccessManager(manager)
+    browser.setPage(page)
+
+    grid.addWidget(url_input, 1, 0)
+    grid.addWidget(browser, 2, 0)
+    grid.addWidget(requests_table, 3, 0)
+
+    main_frame = QWidget()
+    main_frame.setLayout(grid)
+    main_frame.show()
+
+    sys.exit(app.exec_())
+
+{% endhighlight %}
+
+Now fire up your browser, enter url into input box and enjoy the view
+of all requests filling up table below webframe. The result should look
+like this: screenshot.
+
+If you have some spare time you could add lots of new functionality here:
+
+* add filters by content-type
+* add sorting to table
+* add timings
+* highlight requests with errors (e.g. show them in red)
+* show more info about each request - all headers, response content, method
+* add option to replay requests and load them into browser frame, e.g.
+user clicks on request in table and this url is loaded into browser.
+
+This is long TODO list and it would be probably interesting learning
+exercise to do all these things, but describing all of them would probably
+require to write quite a long book.
+
+
+### Add way to evaluate custom JavaScript
+
+Finally let's add one last feature to our experimental browser - 
+ability to execute custom JavaScipt in page context.
+
+After everything we've done earlier this one comes rather easily,
+we just add another QLineEdit widget, connect it to web page object,
+and call evaluateJavaScript method of page frame.
+
+{% highlight python %}
+
+class JavaScriptEvaluator(QLineEdit):
+    def __init__(self, page):
+        super(JavaScriptEvaluator, self).__init__()
+        self.page = page
+        self.returnPressed.connect(self._return_pressed)
+
+    def _return_pressed(self):
+        frame = self.page.currentFrame()
+        result = frame.evaluateJavaScript(self.text())
+
+{% endhighlight %}
+
+then we instantiate it in our main clause and voila our dev tools are ready.
+
+{% highlight python %}
+if __name__ == "__main__":
+    # ...
+    # ...
+    page = QWebPage()
+    # ...
+    js_eval = JavaScriptEvaluator(page)
+
+    grid.addWidget(url_input, 1, 0)
+    grid.addWidget(browser, 2, 0)
+    grid.addWidget(requests_table, 3, 0)
+    grid.addWidget(js_eval, 4, 0)
+
+{% endhighlight %}
+
+Now the only thing missing is ability to execute Python in page context. You could probably
+develop your browser and add support for Python along JavaScript so that devs writing
+apps targeting your browser could.
