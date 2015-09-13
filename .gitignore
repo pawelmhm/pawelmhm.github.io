@@ -1,5 +1,6 @@
 .scrapy
 .idea
+_code/
 /build/
 /dist/
 *.egg-info

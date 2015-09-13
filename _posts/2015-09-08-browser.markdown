@@ -1,8 +1,8 @@
 ---
 layout: post
-title:  "How To Create Your Own Webkit Browser using Python"
+title:  "How to Create Webkit Browser with Python"
 date:   2015-09-08 14:34:42
-categories: python pyqt qt
+categories: python pyqt qt webkit
 author: Pawel Miech
 keywords: pyqt, webkit
 ---
@@ -223,8 +223,7 @@ if __name__ == "__main__":
 {% endhighlight %}
 
 Now fire up your browser, enter url into input box and enjoy the view
-of all requests filling up table below webframe. The result should look
-like this: screenshot.
+of all requests filling up table below webframe. 
 
 If you have some spare time you could add lots of new functionality here:
 
@@ -318,3 +317,11 @@ class ActionInputBox(QLineEdit):
 
 just as before you also need to create instance of ActionInputBox, pass reference
 to page object and add it to our GUI grid.
+
+Full result should look somewhat like this:
+
+<video controls width="120%">
+    <source src="http://pawelmhm.github.io/assets/browser_at_work.ogv" type="video/ogg">
+</video>
+
+For reference here's [code for final result](http://pastebin.com/raw.php?i=WYHLZQDF)
