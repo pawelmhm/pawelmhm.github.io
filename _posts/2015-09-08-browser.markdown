@@ -8,19 +8,17 @@ keywords: pyqt, webkit
 ---
 
 
-In this tutorial we'll create super simple web browser
-for web developers using Python PyQt framework.
-PyQt is a set of Python bindings for Qt framework.
-What is Qt then? Qt (pronounced *cute*) is C++ framework used to create
+In this tutorial we'll create simple web browser using Python PyQt framework.
+As you may know PyQt is a set of Python bindings for Qt framework,
+and Qt (pronounced *cute*) is C++ framework used to create
 GUI-s. To be strict you can use Qt to develop programs without GUI too,
 but developing user interfaces is probably most common thing people do with
 this framework. Main benefit of Qt is that it allows you to create GUI-s
 that are cross platform, your apps can run on various devices using
 native capabilities of each platform without changing your codebase.
 
-Most important thing for this post is that you can just create Webkit browser 
-with PyQt. This is possible because Qt comes with a port Webkit included,
-you just need to import classes you need from PyQt.
+Qt comes with a port of webkit, which means that you can create webkit-based
+browser in PyQt.
 
 Our browser will do following things:
 
@@ -30,8 +28,9 @@ Our browser will do following things:
 
 ### Hello Webkit
 
-Let's start with simplest possible use case of PyQt Webkit, let's say you
-just want to load some url, open a window and render page in this window. 
+Let's start with simplest possible use case of PyQt Webkit: loading some url, 
+opening window and rendering page in this window. 
+
 This is trivial to do, and requires around 13 lines of code (with imports
 and whitespace):
 
@@ -55,15 +54,16 @@ app.exec_()
 If you pass url to script from command line it should load this url and show
 rendered page in window.
 
-### Add some basic GUI
 
 At this point you maybe have something looking like command line browser, which
-is already better than Lynx because it renders JavaScript. But it's not much better
-because you can only pass urls from command line when you invoke it. We 
+is already better than python-requests or even Lynx because it renders JavaScript. 
+But it's not much better than Lynx because you can only pass urls from command line when you invoke it. We 
 definitely need some way of passing urls to load to our browser.
 
+### Add address bar
+
 To do this we'll just add input box at the top of the window, user will type url
-into text box, and browser will load this url. We will use QLineEdit widget for 
+into text box, browser will load this url. We will use QLineEdit widget for 
 input box. Since we will have two elements (text input and browser frame), we'll
 need to add some grid layout to our app.
 
@@ -111,22 +111,23 @@ if __name__ == "__main__":
 
 {% endhighlight %}
 
-At this point you have bare-bones browser. You can enter url into input box and 
+At this point you have bare-bones browser that shows some resembrance to
+Google Chrome and it uses same rendering engine. You can enter url into input box and 
 your app will load url into browser frame and render all HTML and JavaScript.
 
-### Adding dev tools
+### Add dev tools
 
 Of course the most interesting and important part of every browser are its 
 dev tools. Every browser worth its name should have its developer console. 
-Our Python browser should have some developer tools too. Let's add them.
+Our Python browser should have some developer tools too. 
 
-We'll start by adding something similar to Chrome "network" tab in dev tools.
+Let's add something similar to Chrome "network" tab in dev tools.
 We will simply keep track of all requests performed by browser engine while rendering
 page. Requests will be shown in table below main browser frame, for simplicity
 we will only log url, status code and content type of responses.
 
 Do do this we will need to create a table first, we'll use QTableWidget for that,
-Table will have header with field names, it will also auto-resize each time
+header will contain field names, it will auto-resize each time
 new row is added to table.
 
 {% highlight python %}
@@ -159,7 +160,6 @@ to perform and monitor requests performed by application. We will need to
 subclass NetworkAccessManager, add event listeners we need, and tell our 
 webkit view to use this manager to perform its requests.
 
-
 First let's create our network access manager:
 
 {% highlight python %}
@@ -188,8 +188,7 @@ class Manager(QNetworkAccessManager):
 I have to say that some things in Qt are not as easy and quick as they should be.
 Note how awkward it is to get status code from response. You have to use response
 method .attribute() and pass reference to class property of request. This returns
-QVariant not int and when you convert to int it returns tuple. Sounds like bit of 
-work for very straightforward task after all it is just geting HTTP code of response.
+QVariant not int and when you convert to int it returns tuple. 
 
 Now finally we have a table and a network access manager. We just need to wire all this
 together.
@@ -285,3 +284,37 @@ if __name__ == "__main__":
 Now the only thing missing is ability to execute Python in page context. You could probably
 develop your browser and add support for Python along JavaScript so that devs writing
 apps targeting your browser could.
+
+
+### Moving back and forth, other page actions
+
+Since we already connected our browser to QWebPage object we can also add other
+actions important for end users. Qt web page object supports lots of different
+actions and you can add them all to your app. 
+
+For now let's just add support for "back", "forward" and "reload". You could 
+add those actions to our GUI by adding buttons, but it will be easier to just
+add another text input box. 
+
+{% highlight python %}
+
+class ActionInputBox(QLineEdit):
+    def __init__(self, page):
+        super(ActionInputBox, self).__init__()
+        self.page = page
+        self.returnPressed.connect(self._return_pressed)
+
+    def _return_pressed(self):
+        frame = self.page.currentFrame()
+        action_string = str(self.text()).lower()
+        if action_string == "b":
+            self.page.triggerAction(QWebPage.Back)
+        elif action_string == "f":
+            self.page.triggerAction(QWebPage.Forward)
+        elif action_string == "s":
+            self.page.triggerAction(QWebPage.Stop)
+
+{% endhighlight %}
+
+just as before you also need to create instance of ActionInputBox, pass reference
+to page object and add it to our GUI grid.
