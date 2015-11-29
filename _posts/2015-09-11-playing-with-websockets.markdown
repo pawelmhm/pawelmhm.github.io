@@ -1,15 +1,16 @@
-## websocket interface to unix subprocesses
+---
+layout: post
+title:  "Creating Chat Roulette with Python"
+date:   2015-09-11 14:34:42
+categories: python websockets 
+author: Pawel Miech
+keywords: python websockets twisted autobahn
+---
 
-In this post I'm going to add realtime web interface to Linux bash. The idea 
-is pretty simple, there's going to be super basic html page with input box and 
-some JavaScript. This webpage will be connected to python server with websockets.
-Every message sent to server will be evaluated in Linux shell, the output is going
-to be communicated back to webpage and shown in html. 
-
-Websockets server it's going to be written with Autobahn - which seems to be
+Websockets server it's going to be written with [Autobahn](http://autobahn.ws/python/index.html) - which seems to be
 one of coolest websockets implementations for Python. Autobahn websockets
 implementation supports both Twisted and Asyncio, which seems really great.
-I'm going to use Twisted implementation mainly because I'm just more familiar
+I'm going to use [Twisted](https://twistedmatrix.com/trac/) implementation mainly because I'm just more familiar
 with Twisted. 
 
 ## Step 1 - preparations
@@ -29,6 +30,8 @@ For this post however I'd like to go with simpler solution, something that will
 spare us the details of settinp up WSGI app, so we'll just serve simple static
 index.html file with Twisted. 
 
+{% highlight python %}
+
 import sys
 from twisted.web.static import File
 from twisted.python import log
@@ -41,10 +44,14 @@ site = Site(root)
 reactor.listenTCP(8080, site)
 reactor.run()
 
+{% endhighlight %}
+
 Save this as server.py and create basic index.html file in same directory. Voila
 you have basic index.html served by Twisted.
 
 Now let's actually add some websockets to the mix.
+
+{% highlight python %}
 
 import sys
 from twisted.web.static import File
@@ -82,6 +89,7 @@ if __name__ == "__main__":
     reactor.listenTCP(8080, site)
     reactor.run()
 
+{% endhighlight %}
 
 Above code adds simple websockets protocol that is just responding to every
 message with pretty stupid message: "message received". It's no big deal, but 
@@ -109,14 +117,19 @@ is received. When websocket message is received browser should simply update
 listener to "submit" event occuring on input. When "submit" event happens
 browser should use our websocket and send message via this socket.
 
+
+{% highlight html %}
+
 <!DOCTYPE html>
 <html>
 <head>
 <script type="text/javascript">
-    // my JavaScript may be bit rusty, sorry
-    window.onload = function() {
+    // use vanilla JS because why not
+    window.addEventListener("load", function() {
+        
         // create websocket instance
         var mySocket = new WebSocket("ws://localhost:8080/ws");
+        
         // add event listener reacting when message is received
         mySocket.onmessage = function (event) {
             var output = document.getElementById("output");
@@ -131,10 +144,10 @@ browser should use our websocket and send message via this socket.
             mySocket.send(input_text);
             e.preventDefault()
         })
-    };
+    });
 </script>
 <style>
-    /* just some super ugly css to make things bit more readable*/
+    /* just some super basic css to make things bit more readable */
     div {
         margin: 10em;
     }
@@ -146,62 +159,157 @@ browser should use our websocket and send message via this socket.
 <body>
     <form class="foo">
         <input id="input"></input>
+        <input type="submit"></input>
     </form>
     <div id="output"></div>
 </body>
 </html>
 
+{% endhighlight %}
+
 At this point we have simple websockets server and client that talk to each other. 
 Their communication is not very complex, and is actually bit stupid. Server just
 echoes back message from client. At this point we can start adding some cool features.
 
-### Launch subprocesses and communicate output
 
-At this point we can add some websockets interface to our operating system. 
-We have simple input box, user can enter output there, it will be sent via
-websockets to server. Server will execute commands using python subprocess
-module and communicate results back to client.
+## Step 3 - register and unregister clients
 
-Of course this is just learning exercise and it is certainly NOT a great idea
-for real web app. If you ever expose something like this to external world you're 
-basically giving away access to your operating system to anyone in the world. 
-If you'd like to really put this idea live somewhere you could somehow sandbox
-it though, e.g. running it from inside some docker container with very limited
-capabilities. That said here goes our websockets server:
+Now that we have basic skeleton of websockets project we can start adding some real functionality.
+First thing we need to do is register and unregister clients starting conversations with our server.
+To accomplish this we will need to add some factory to our protocol. In Twisted protocols are created
+per connection, and they allow you to define event listeners for your application. In case of websockets
+this means that your protocol can define event handlers for common scenarios: message being sent, connection being
+made, connection lost etc. Factories on the other hand manufacture protocols. They are common to 
+multiple protocols, they define how protocols should interact with each other. 
 
-import sys
-import subprocess
+In case of our chat roullette all this means that aside from writing protocol we just need to write 
+factory that will define how websocket clients will interact with each other. Of course we also
+need to define protocols to specify how are we going to handle typical websockets events.
 
-from twisted.web.static import File
-from twisted.python import log
-from twisted.web.server import Site
-from twisted.internet import reactor
+Let's start with protocol. Our base class will look like this, no real code for now just 
+docstring and basic structure of our object.
 
-from autobahn.twisted.websocket import WebSocketServerFactory, \
-    WebSocketServerProtocol
-
-from autobahn.twisted.resource import WebSocketResource
-
+{% highlight python %}
 
 class SomeServerProtocol(WebSocketServerProtocol):
-    def onConnect(self, request):
-        # print("some request connected {}".format(request))
+    def onOpen(self):
+        """
+        Connection from client is opened. Fires after opening
+        websockets handshake has been completed and we can send
+        and receive messages.
+
+        Register client in factory, so that it is able to track it.
+        Try to find conversation partner for this client.
+        """
+        pass
+
+    def connectionLost(self, reason):
+        """
+        Client lost connection, either disconnected or some error.
+        Remove client from list of tracked connections.
+        """
         pass
 
     def onMessage(self, payload, isBinary):
-        print("payload {}".format(payload))
-        arguments = payload.split()
-        try:
-            output = subprocess.Popen(arguments, stdout=subprocess.PIPE)
-            out, err = output.communicate()
-        except OSError:
-            out, err = "",  "command invalid"
+        """
+        Message sent from client, communicate this message to its conversation partner,
+        """
+        pass
 
-        if err:
-            self.sendMessage("error: {}".format(err))
+
+{% endhighlight %}
+
+Implementation of our protocol would look like this:
+
+{% highlight python %}
+
+class SomeServerProtocol(WebSocketServerProtocol):
+    def onOpen(self):
+        self.factory.register(self)
+        self.factory.findPartner(self)
+
+    def connectionLost(self, reason):
+        self.factory.unregister(self)
+
+    def onMessage(self, payload, isBinary):
+        self.factory.communicate(self, payload, isBinary)
+
+{% endhighlight %}
+
+Now that we have our protocol we need to define common functionalities per protocol and
+add a way to manage interactions between protocols. Our base protocl factory could look like this.
+
+
+{% highlight python %}
+
+class ChatRouletteFactory(WebSocketServerFactory):
+    def register(self, client):
+        """
+        Add client to list of managed connections.
+        """
+        pass
+
+    def unregister(self, client):
+        """
+        Remove client from list of managed connections.
+        """
+        pass
+
+    def findPartner(self, client):
+        """
+        Find chat partner for a client. Check if there any of tracked clients
+        is idle. If there is no idle client just exit quietly. If there is
+        available partner assign him/her to our client.
+        """
+        pass
+
+    def communicate(self, client, payload, isBinary):
+        """
+        Broker message from client to its partner.
+        """
+        pass
+        
+
+{% endhighlight %}
+
+and implementation of this could look like this:
+
+{% highlight python %}
+
+class ChatRouletteFactory(WebSocketServerFactory):
+    def __init__(self, *args, **kwargs):
+        super(ChatRouletteFactory, self).__init__(*args, **kwargs)
+        self.clients = {}
+
+    def register(self, client):
+        self.clients[client.peer] = {"object": client, "partner": None}
+
+    def unregister(self, client):
+        self.clients.pop(client.peer)
+
+    def findPartner(self, client):
+        available_partners = [c for c in self.clients if c != client.peer 
+                              and not self.clients[c]["partner"]]
+        if not available_partners:
+            print("no partners for {} check in a moment".format(client.peer))
         else:
-            self.sendMessage("{}".format(out))
+            partner_key = random.choice(available_partners)
+            self.clients[partner_key]["partner"] = client
+            self.clients[client.peer]["partner"] = self.clients[partner_key]["object"]
 
+    def communicate(self, client, payload, isBinary):
+        c = self.clients[client.peer]
+        if not c["partner"]:
+            c["object"].sendMessage("Sorry you dont have partner yet, check back in a minute")
+        else:
+            c["partner"].sendMessage(payload)
+
+{% endhighlight %}
+
+Now that we have everything defined you only need to tie it together, create instances of objects
+and start your program:
+
+{% highlight python %}
 
 if __name__ == "__main__":
     log.startLogging(sys.stdout)
@@ -209,7 +317,7 @@ if __name__ == "__main__":
     # static file server seving index.html as root
     root = File(".")
 
-    factory = WebSocketServerFactory(u"ws://127.0.0.1:8080")
+    factory = ChatRouletteFactory(u"ws://127.0.0.1:8080", debug=True)
     factory.protocol = SomeServerProtocol
     resource = WebSocketResource(factory)
     # websockets resource on "/ws" path
@@ -219,19 +327,4 @@ if __name__ == "__main__":
     reactor.listenTCP(8080, site)
     reactor.run()
 
-Now you can run your commands from webpage and they will be executed by user running
-your websockets application.
-
-### Launch subprocesses and communicate output
-
-Now that we are able to launch subprocesses via websockets we could go one step
-farther and actually start python sessions from our webpage. We could launch
-python intepreter from our python websockets server. Sounds pretty cool doesn't it.
-
-Unfortunatenly this is not that simple. Let's try to simply run python command in
-our webpage. Suprisingly this will open python session within our webserver. This
-is not exactly what we would expect. It would be nice to start some new python
-process attached to websocket server, execute commands there and keep its state
-
-For simplicity I'll rewrite previous code to only support python. We'll have live
-python interpreter in our webpage (so no more system calls).
+{% endhighlight %}
