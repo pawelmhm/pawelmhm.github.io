@@ -1,34 +1,48 @@
 ---
 layout: post
-title:  "Creating Chat Roulette with Python"
-date:   2015-09-11 14:34:42
+title:  "Creating Websockets Chat with Python"
+date:   2016-01-02 14:34:42
 categories: python websockets 
 author: Pawel Miech
 keywords: python websockets twisted autobahn
 ---
 
-Websockets server it's going to be written with [Autobahn](http://autobahn.ws/python/index.html) - which seems to be
-one of coolest websockets implementations for Python. Autobahn websockets
-implementation supports both Twisted and Asyncio, which seems really great.
-I'm going to use [Twisted](https://twistedmatrix.com/trac/) implementation mainly because I'm just more familiar
-with Twisted. 
+In this post I'm going to write simple chat roulette application using websockets. 
+App will consist of very basic user interface with some HTML + JavaScript. When I say "basic"
+I really mean it, it's going to be just input box and vanilla JS creating websocket connection.
+On the backend side app will have websocket server managing realtime communication between clients.
 
-## Step 1 - preparations
+Websockets are one of the coolest technologies in recent years. They are getting popular mostly because
+they allow two-way communication between server and browser. In traditional HTTP application client
+sends requests and server issues response after which their exchange is terminated. This model is 
+totally okay for most web apps, but it is inefficient for applications that require realtime communication.
+[RFC 6455](https://tools.ietf.org/html/rfc6455#section-1.7) is probably most detailed introduction to
+websockets specs.
 
-Before we actually start with websockets we'll need to set up something that 
-is going to server our index.html file with input box and JavaScript. As you
-may know websockets is different protocol from HTTP so you can't have websockets
-and HTTP server running as one single web resource. They need to be separated
-somehow. Usually you will probably prefer some WSGI app listening on "/" and
-websockets server delegated to some specific path. In this setup you could
-have flask app running on root domain and handling some specific routes, and 
-websockets server on one specific path e.g. "/ws", so that all requests going
-to "http://localhost/" will be handled by Flask, and everything going to
-"http://localhost/ws" will be handled by your websockets server. 
+If you'd like to write websocket applications in Python there are couple of choices. If you're 
+Django user there [are Channels](http://channels.readthedocs.org/en/latest/), for Flask there is [flask-SocketIO](https://flask-socketio.readthedocs.org/en/latest/).
+Both solutions are trying to extend existing web frameworks to allow for usage of websockets. 
+[Python Tornado](http://www.tornadoweb.org/en/stable/) on the other hand is a whole web framework built
+for realtime asynchronous applications using websockets.
 
-For this post however I'd like to go with simpler solution, something that will
-spare us the details of settinp up WSGI app, so we'll just serve simple static
-index.html file with Twisted. 
+One of the most mature implementations of websockets is [Autobahn-Python](http://autobahn.ws/python/index.html). 
+Autobahn websockets implementation supports both Twisted and Asyncio. I'm going to use [Twisted](https://twistedmatrix.com/trac/)
+implementation. Why do I think Autobahn + Twisted is worth writing about?
+
+* Twisted is oldest and most stable asynchronous solution for Python, it is still actively developed
+(e.g. just recently most components finally gained Python 3 support) and still grows quite quickly (e.g.
+there is work on adding [HTTP2 support to Twisted](https://twistedmatrix.com/trac/ticket/7460))
+* Twisted is built with asynchronous model at the core, this is absolutely crucial for websocket applications that need
+to deal with long-living persistent connection from client
+
+
+## Hello websocket
+
+Before we actually start with development of server side websockets we'll need to 
+set up something that is going to serve index.html file with client side JavaScript + HTML
+handling user interaction with your websocket server.
+
+Serving static file with Twisted is trivial and looks like this.
 
 {% highlight python %}
 
@@ -46,8 +60,8 @@ reactor.run()
 
 {% endhighlight %}
 
-Save this as server.py and create basic index.html file in same directory. Voila
-you have basic index.html served by Twisted.
+Save this as server.py and create index.html file in same directory. Index.html can be blank for now,
+we will write HTML in a moment. 
 
 Now let's actually add some websockets to the mix.
 
@@ -96,26 +110,28 @@ message with pretty stupid message: "message received". It's no big deal, but
 it's pretty nice because at this point you actually have working websockets
 server. There is no client side websockets code yet, but you can test your server
 with some command line websockets clients or browser extension, e.g. with 
-"Simple WebSocket Client" Chrome extension. 
+["Simple WebSocket Client" Chrome extension](https://chrome.google.com/webstore/detail/simple-websocket-client/pfdhoblngboilpfeibdedpjgfnlcodoo?hl=en). 
+Just run your server.py and ping ws://localhost:8080/ws from Chrome extension.
 
-## Step 2 - add client side JavaScript
+## Add client side JavaScript
 
 Now that we have working websockets server we can create our client. We need
-two things: first is input box where user can write some strings that are going
-to be transmitted to server; second is JavaScript code creating websockets connection
-and sending data to our websockets server.
+two things: input box where user can write some strings that are going
+to be transmitted to server; and JavaScript code creating websockets connection
+and sending data to our websockets server after some UI event occurs.
 
 Mozilla Developer Network has some good [docs about this topic](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_client_applications), I'm going to use
 vanilla JS, but you can just as well use jQuery or even some specialized 
-library for websockets.
+library for websockets (e.g Socket-IO).
 
-Below is our index html. We put some JavaScript into html html, our JS code
+Below is our index html. Our JS code
 does following things. First it creates websocket instance and defines
 some event listener that will tell browser what to do when websocket message
 is received. When websocket message is received browser should simply update
 "output" node with text content of message. We then fetch input box, add event
-listener to "submit" event occuring on input. When "submit" event happens
+listener to "submit" event. When "submit" event happens
 browser should use our websocket and send message via this socket.
+Sending data is just a matter of making mySocket.send call on WebSocket object.
 
 
 {% highlight html %}
@@ -168,11 +184,11 @@ browser should use our websocket and send message via this socket.
 {% endhighlight %}
 
 At this point we have simple websockets server and client that talk to each other. 
-Their communication is not very complex, and is actually bit stupid. Server just
+Their communication is not very complex. Server just
 echoes back message from client. At this point we can start adding some cool features.
 
 
-## Step 3 - register and unregister clients
+## Register and unregister clients
 
 Now that we have basic skeleton of websockets project we can start adding some real functionality.
 First thing we need to do is register and unregister clients starting conversations with our server.
@@ -237,7 +253,7 @@ class SomeServerProtocol(WebSocketServerProtocol):
 {% endhighlight %}
 
 Now that we have our protocol we need to define common functionalities per protocol and
-add a way to manage interactions between protocols. Our base protocl factory could look like this.
+add a way to manage interactions between protocols. Our base protocol factory could look like this.
 
 
 {% highlight python %}
@@ -328,3 +344,11 @@ if __name__ == "__main__":
     reactor.run()
 
 {% endhighlight %}
+
+You can find full Python source code [here](http://pastebin.com/YJJzreFF), HTML with JS 
+is [here](http://pastebin.com/twP1Ksv4). 
+
+With the above code you should be able to talk to yourself via your Chat server. Just open
+couple of browser tabs and start writing in each input box. There is probably lots of things
+that could be improved, but I just wanted to create very basic demo that could get people started. 
+If you do find some bugs or mistakes feel free to ping me.
