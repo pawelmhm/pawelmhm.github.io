@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "The benefits of static typing without static typing in Python 3"
+title:  "The benefits of static typing without static typing in Python"
 date:   2016-01-23 14:34:42
 categories: python static typing type annotations
 author: Pawel Miech
