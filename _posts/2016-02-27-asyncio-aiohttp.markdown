@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Load testing asyncio"
+title:  "Making 1 million requests with python-asyncio"
 date:   2016-02-27 6:00
 categories: asyncio python
 author: Pawel Miech
@@ -16,24 +16,13 @@ are very terse and contain only basic examples. There are some Stack Overflow qu
 but not [that many](http://stackoverflow.com/questions/tagged/python-asyncio?sort=votes&pageSize=50)
 only 367 as of time of writing (compare with [2 517 questions tagged with twisted](http://stackoverflow.com/questions/tagged/twisted)
 There are couple of nice blog posts about asyncio
-over there. I would start with following:
+over there such as [this](http://aosabook.org/en/500L/a-web-crawler-with-asyncio-coroutines.html),
+[that](http://www.snarky.ca/how-the-heck-does-async-await-work-in-python-3-5), [that](http://sahandsaba.com/understanding-asyncio-node-js-python-3-4.html) or perhaps even [this](https://community.nitrous.io/tutorials/asynchronous-programming-with-python-3)
+or [this](https://compiletoi.net/fast-scraping-in-python-with-asyncio/)
 
-http://aosabook.org/en/500L/a-web-crawler-with-asyncio-coroutines.html
-http://www.snarky.ca/how-the-heck-does-async-await-work-in-python-3-5
-http://sahandsaba.com/understanding-asyncio-node-js-python-3-4.html
-https://community.nitrous.io/tutorials/asynchronous-programming-with-python-3
-https://compiletoi.net/fast-scraping-in-python-with-asyncio/
+Aiohttp is overall well documented and also has pretty good [examples](https://github.com/KeepSafe/aiohttp/blob/master/examples/crawl.py)
 
-Seems like everyone are talking about asyncio and try to use it. Scrapy core contributors
-were playing with replacing Twisted as [Scrapy engine](https://github.com/scrapy/scrapy/pull/1455)
-and using asyncio. 
-
-Examples from aiohttp:
-https://github.com/KeepSafe/aiohttp/blob/master/examples/crawl.py
-
-## What is asynchronous in 3 sentences or less
-
-### syntax confusion between 3.4 and 3.5
+### Difficulties getting started with asyncio
 
 It's not that easy to get started with asyncio. First reason is that there are changes
 in asyncio itself between different version.
@@ -42,7 +31,7 @@ In version 3.4 you create asynchronous function with @asyncio.couroutine decorat
 yield [from syntax](https://docs.python.org/3.4/library/asyncio-task.html#example-chain-coroutines),
 so your code may look like this:
 
-{% highlight python3 %}
+{% highlight python %}
 
 import asyncio
 
@@ -129,8 +118,7 @@ print(hello())
 
 
 
-
-{% highlight python %}
+{% endhighlight %}
 
 How does that look in aiohttp?
 
@@ -338,3 +326,183 @@ it should be:
 {% highlight python %}
     responses = await asyncio.gather(*tasks)
 {% endhighlight %}
+
+
+## Trash localhost
+
+Finally time for some fun. Let's check if async is really worth the hassle. What's the
+difference in efficiency between asynchronous client and blocking client? How many
+requests per minute can I send with my async client? With this questions in mind
+I set up simple (async) aiohttp server. It is going to imitate real network conditions. 
+My server is going to read full html text of Frankenstein by Marry Shelley. It will
+add random delays between responses. Some responses will have zero delay, and some will
+have maxium of 4 seconds delay.
+
+Server code looks like this:
+
+{% highlight python %}
+#!/usr/local/bin/python3.5
+import asyncio
+from datetime import datetime
+from aiohttp import web
+import random
+
+# set seed to ensure async and sync client get same distribution of delay values
+# and tests are fair
+random.seed(1)
+
+async def hello(request):
+    name = request.match_info.get("name", "foo")
+    n = datetime.now().isoformat()
+    delay = random.randint(0, 3)
+    await asyncio.sleep(delay)
+    headers = {"content_type": "text/html", "delay": str(delay)}
+    with open("frank.html", "rb") as html_body:
+        print("{}: {} delay: {}".format(n, request.path, delay))
+        response = web.Response(body=html_body.read(), headers=headers)
+    return response
+
+app = web.Application()
+app.router.add_route("GET", "/{name}", hello)
+web.run_app(app)
+
+{% endhighlight %}
+
+Synchronous client is like this
+
+{% highlight python %}
+
+import requests
+r = 100
+
+url = "http://localhost:8080/{}"
+for i in range(r):
+    res = requests.get(url.format(i))
+    delay = res.headers.get("DELAY")
+    d = res.headers.get("DATE")
+    print("{}:{} delay {}".format(d, res.url, delay))
+
+{% endhighlight %}
+
+How long will it take to run this? On my machine running above synchronous client
+took 2:45.54 minutes. How long will async client take? Well on my machine it took
+0:03.48 seconds. It is interesting that it took exactly as long as longest delay 
+from my server. If you look into messages printed by client script you can see how
+great async HTTP client is. Some responses got 3 seconds delay. In synchronous client
+they would be blocking and waiting, your machine would simply stay idle for this time. 
+Async client does not waste it's time, when something is delayed it simply does
+something else, processes all other responses. You can see this clearly in logs, first there
+are responses with 0 delay, then after they arrrived you can see responses with 1 seconds delay, 
+and so on until most delayed responses arrive. 
+
+## Testing the limits
+
+Now that we know our async client is better let's try to test its limits and try to crash our
+localhost. I'm going to start with sending 1k async requests. I'm curious how many requests
+my client can handle.
+
+So 1k requests take 7 seconds, pretty nice! How about 10k? Trying to make 10k requests 
+unfortunatenly fails with 
+
+
+{% highlight python %}
+
+responses are <_GatheringFuture finished exception=ClientOSError(24, 'Cannot connect to host localhost:8080 ssl:False [Can not connect to localhost:8080 [Too many open files]]')>
+Traceback (most recent call last):
+  File "/home/pawel/.local/lib/python3.5/site-packages/aiohttp/connector.py", line 581, in _create_connection
+  File "/usr/local/lib/python3.5/asyncio/base_events.py", line 651, in create_connection
+  File "/usr/local/lib/python3.5/asyncio/base_events.py", line 618, in create_connection
+  File "/usr/local/lib/python3.5/socket.py", line 134, in __init__
+OSError: [Errno 24] Too many open files
+
+{% endhighlight %}
+
+That's bad, seems like I stumbled across 10k connections problem. How many files
+are too many? I checked with python resource module and it seems like it's around 1024.
+How can we bypass this? Primitive way is just increasing limit of open files. But this
+is probably not the good way to go. Much better way is just adding some synchronization
+in your client limiting number of concurrent requests it can process. I'm going to do this
+by adding asyncio.Sempaphore() with max tasks of 1000 (so close to open files limit).
+
+
+Modified run() function looks like this now:
+
+{% highlight python %}
+async def run(loop,  r):
+    url = "http://localhost:8080/{}"
+    tasks = []
+    sem = asyncio.Semaphore(1000)
+    for i in range(r):
+        task = asyncio.ensure_future(fetch(url.format(i)))
+        await sem.acquire()
+        task.add_done_callback(lambda t: sem.release())
+        tasks.append(task)
+
+    responses = asyncio.gather(*tasks)
+    responses.add_done_callback(print_responses)
+    await responses
+
+{% endhighlight %}
+
+At this point I can process 10k urls. It takes 23 seconds, so pretty nice.
+
+How about trying 100 000? This really makes my computer work hard but it
+actually seems pretty nice. Server turns out to be suprisingly stable although
+you can see that ram usage gets pretty high at this point, cpu usage is around 
+100% all the time. What I find interesting is that my server takes significantly less cpu than client.
+Overall there is 1k connections is zero problem for my test server, here's snapshot
+of ps output.
+
+{% highlight python %}
+
+pawel@pawel-VPCEH390X ~/p/l/benchmarker> ps ua | grep python
+pawel     2447 56.3  1.0 216124 64976 pts/9    Sl+  21:26   1:27 /usr/local/bin/python3.5 ./test_server.py
+pawel     2527  101  3.5 674732 212076 pts/0   Rl+  21:26   2:30 /usr/local/bin/python3.5 ./bench.py
+
+{% endhighlight %}
+
+Overall it took around 5 minutes before it crashed for some
+reason, since it generated around 100k lines of output it's not that easy
+to pinpoint traceback, seems like some responses are not closed, whether this 
+is because of some error from my server or something in client?
+
+After scrolling for couple of seconds I found this exception
+
+{% highlight python %}
+
+  File "/usr/local/lib/python3.5/asyncio/futures.py", line 387, in __iter__
+    return self.result()  # May raise too.
+  File "/usr/local/lib/python3.5/asyncio/futures.py", line 274, in result
+    raise self._exception
+  File "/usr/local/lib/python3.5/asyncio/selector_events.py", line 411, in _sock_connect
+    sock.connect(address)
+OSError: [Errno 99] Cannot assign requested address
+
+{% endhighlight %}
+
+My hypothesis is that test server went down for some split second,
+and this caused some client error that was printed at the end, 
+so probably I need to add errbacks to aiohttp requests. Overall it's really
+not bad though, 5 minutes for 100 000 requests? this makes around 20k
+requests per minute. Pretty powerful if you ask me.
+
+Finally I'm going to try 1 million requests. I really hope my laptop is not going
+to explode and burn when processing that. For this amount of requests I reduced
+delays to range between 0 and 1.
+
+I know at this point I should probably think about adding some rate limit in my test server.
+Seems like it does run into some trouble once in a while.
+
+1 000 000 requests finished in 52 minutes
+
+{% highlight shell %}
+1913.06user 1196.09system 52:06.87elapsed 99%CPU (0avgtext+0avgdata 5194260maxresident)k
+265144inputs+0outputs (18692major+2528207minor)pagefaults 0swaps
+
+{% endhighlight %}
+
+so it means my client made around 19230 requests per minute. Not bad isn't it? Note that
+capabilities of my client are limited by server responding with delay of 0 and 1 in this 
+scenario, seems like my test server also crashed silently couple of times. I wonder
+how it compares to other languages and async frameworks?
+
