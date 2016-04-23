@@ -1,111 +1,39 @@
 ---
 layout: post
-title:  "Making 1 million requests with python-asyncio"
-date:   2016-02-27 6:00
-categories: asyncio python
-author: Pawel Miech
+title:  "Making 1 million requests with python-aiohttp"
+date:   2016-04-22 6:00
+categories: asyncio python aiohttp
+author: Paweł Miech
 keywords: asyncio, aiohttp, python
 ---
 
-Async IO is one of the trending topics in Python now, as you may know Python 3.4
-adds async library to Standard Library so you no longer need to install some 
-special package to use it.
+In this post I'd like to test limits of [python aiohttp](http://aiohttp.readthedocs.org/en/stable/) and check its performance  in 
+terms of requests per minute. Everyone knows that asynchronous code performs
+better when applied to network operations, but it's still interesting to check this
+assumption and understand how exactly it is better and why it's is better. I'm going
+to check it by trying to make 1 million requests with aiohttp client. How many requests per minute will aiohttp make?
+What kind of exceptions and crashes can you expect when you try to make such volume
+of requests with very primitive scripts? What are main gotchas that you need
+to think about when trying to make such volume of requests?
 
-Asyncio is not that easy to get started with though. [Official docs](https://docs.python.org/3/library/asyncio.html)
+## Hello asyncio/aiohttp
+
+Async programming is not easy. It's not easy because using callbacks and thinking in terms of events
+and event handlers requires more effort than usual synchronous programming. But
+it is also difficult because asyncio is still relatively new and there are few
+blog posts, tutorials about it. [Official docs](https://docs.python.org/3/library/asyncio.html)
 are very terse and contain only basic examples. There are some Stack Overflow questions 
 but not [that many](http://stackoverflow.com/questions/tagged/python-asyncio?sort=votes&pageSize=50)
-only 367 as of time of writing (compare with [2 517 questions tagged with twisted](http://stackoverflow.com/questions/tagged/twisted)
-There are couple of nice blog posts about asyncio
+only 410 as of time of writing (compare with [2 585 questions tagged "twisted"](http://stackoverflow.com/questions/tagged/twisted))
+There are couple of nice blog posts and articles about asyncio
 over there such as [this](http://aosabook.org/en/500L/a-web-crawler-with-asyncio-coroutines.html),
 [that](http://www.snarky.ca/how-the-heck-does-async-await-work-in-python-3-5), [that](http://sahandsaba.com/understanding-asyncio-node-js-python-3-4.html) or perhaps even [this](https://community.nitrous.io/tutorials/asynchronous-programming-with-python-3)
-or [this](https://compiletoi.net/fast-scraping-in-python-with-asyncio/)
+or [this](https://compiletoi.net/fast-scraping-in-python-with-asyncio/). 
 
-Aiohttp is overall well documented and also has pretty good [examples](https://github.com/KeepSafe/aiohttp/blob/master/examples/crawl.py)
+To make it easier let's start with the basics - simple HTTP hello world - 
+just making GET and fetching one single HTTP response. 
 
-### Difficulties getting started with asyncio
-
-It's not that easy to get started with asyncio. First reason is that there are changes
-in asyncio itself between different version.
-
-In version 3.4 you create asynchronous function with @asyncio.couroutine decorator and
-yield [from syntax](https://docs.python.org/3.4/library/asyncio-task.html#example-chain-coroutines),
-so your code may look like this:
-
-{% highlight python %}
-
-import asyncio
-
-@asyncio.coroutine
-def compute(x, y):
-    print("Compute %s + %s ..." % (x, y))
-    yield from asyncio.sleep(1.0)
-    return x + y
-
-@asyncio.coroutine
-def print_sum(x, y):
-    result = yield from compute(x, y)
-    print("%s + %s = %s" % (x, y, result))
-
-loop = asyncio.get_event_loop()
-loop.run_until_complete(print_sum(1, 2))
-loop.close()
-
-{% endhighlight %}
-
-If you're used to Python 2 above code may look bizarre. First of there is [yield from
-expression](https://docs.python.org/3/whatsnew/3.3.html#pep-380). There is also return
-inside generator, which is something that was not allowed in Python 2. Now before
-you go on and start learning those new nice things you need to realize that it is 
-already outdated for asyncio. Turns out that developers of asyncio realized
-that yield from syntax is not good fit for their needs and it was replaced with new
-[async - await syntax](https://docs.python.org/3.5/library/asyncio-task.html#example-chain-coroutines)
-Of course yield from is still part of Python and is still good thing to know but it is
-no longer recommended way to create asynchronous coroutines in Python 3.5
-
-> The async def type of coroutine was added in Python 3.5, and is recommended if there is no need to support older Python versions.
-
-This is bit unfortunate in my opinion. First off it means that all blog posts, code
-samples etc and documentation written @asyncio.coroutine becomes outdated. Of course
-code will not be broken, decorator syntax will still be supported, but it's no longer
-"recommended" way. This is sad news for all those blog writers out there, 
-most of their posts written about Python 3.4 asyncio will now confuse people trying to learn. 
-Someone trying to figure out what asyncio is will see some people using async await 
-and others using yield from with decorator, it will increase learning curve for them. 
-
-The benefit of async await is that it is significantly shorter, and if you think about
-it for a while it also looks better. There are some clear and convincing benefits of using
-[async-wait over decorators](https://www.python.org/dev/peps/pep-0492/#asyncio)
-
-After refactoring to use async - await our example from above looks like this:
-
-{% highlight python %}
-
-import asyncio
-
-async def compute(x, y):
-    print("Compute %s + %s ..." % (x, y))
-    await asyncio.sleep(1.0)
-    return x + y
-
-async def print_sum(x, y):
-    result = await compute(x, y)
-    print("%s + %s = %s" % (x, y, result))
-
-loop = asyncio.get_event_loop()
-loop.run_until_complete(print_sum(1, 2))
-loop.close()
-
-{% endhighlight %}
-
-
-## hello aiohttp 
-
-Now that we have all details ready we can move on to creating some simple asyncio-aiohttp
-crawler. Let's start with simple HTTP hello world - just making GET and fetching one
-single HTTP response. One warning before we start: please prepare yourself for bit complex
-code. 
-
-In synchronous world you just do
+In synchronous world you just do:
 
 {% highlight python %}
 
@@ -115,7 +43,6 @@ def hello()
     return requests.get("http://httpbin.org/get")
 
 print(hello())
-
 
 
 {% endhighlight %}
@@ -140,31 +67,31 @@ loop.run_until_complete(hello())
 
 {% endhighlight %}
 
-whoah that's a lot of code for such a simple task isn't it? It definitely is, and the code
-is also much more complex. you have "async def" and "async with" and two "awaits" here. It
+hmm looks like I had to write lots of code for such a basic task...  There is "async def" and "async with" and two "awaits" here. It
 seems really confusing at first sight, let's try to explain it then. 
 
-Actually some of the differences are related more to how aiohttp works and less to async nature of the code.
-You make your function asynchronous by using async keyword before function definition and using await
+You make your function asynchronous by using [async keyword](https://www.python.org/dev/peps/pep-0492/#await-expression) before function definition and using await
 keyword. There are actually two asynchronous operations that our hello() function performs. First
-it fetches response asynchronously, second it reads response body in asynchronous manner.
+it fetches response asynchronously, then it reads response body in asynchronous manner.
 
 Aiohttp recommends to use ClientSession as primary interface to make requests. ClientSession
 allows you to store cookies between requests and keeps objects that are common for
 all requests (event loop, connection and other things). Session needs to be closed after using it,
-and closing session is another asynchronous operation, this is why you need async with
+and closing session is another asynchronous operation, this is why you need [`async with`](https://www.python.org/dev/peps/pep-0492/#asynchronous-context-managers-and-async-with)
 every time you deal with sessions.
 
 After you open client session you can use it to make requests. This is where another asynchronous
 operation starts, downloading request. Just as in case of client sessions responses must be closed
-explicitly, and "with" statement assures you it will be closed.
+explicitly, and context manager's `with` statement ensures it will be closed properly in all
+circumstances.
 
 To start your program you need to run it in event loop, so you need to create instance of asyncio
 loop and put task into this loop.
 
-To sum up it's bit difficult but not that complex.
+It all does sound bit difficult but it's not that complex and looks logical if you spend
+some time trying to understand it.
 
-## fetch multiple urls
+## Fetch multiple urls
 
 Now let's try to do something more interesting, fetching multiple urls one after another.
 With synchronous code you would do just:
@@ -176,10 +103,10 @@ for url in urls:
 
 {% endhighlight %}
 
-this is really quick and easy, async will not be that easy, so you should always consider if something more complex
+This is really quick and easy, async will not be that easy, so you should always consider if something more complex
 is actually necessary for your needs. If your app works nice with synchronous code maybe there
 is no need to bother with async code? If you do need to bother with async code here's how you do
-that. Our hell() async function stays the same but we need to wrap it in asyncio Future object
+that. Our `hello()` async function stays the same but we need to wrap it in asyncio [`Future`](https://docs.python.org/3/library/asyncio-task.html#future) object
 and pass whole lists of Future objects as tasks to be executed in the loop.
 
 {% highlight python %}
@@ -222,6 +149,7 @@ async def run(loop,  r):
         tasks.append(task)
 
     responses = await asyncio.gather(*tasks)
+    # you now have all response bodies in this variable
     print(responses)
 
 def print_responses(result):
@@ -233,15 +161,15 @@ loop.run_until_complete(future)
 
 {% endhighlight %}
 
-Notice usage of asuncio.gather(), this collects bunch of Future objects in one place
+Notice usage of [`asyncio.gather()`](https://docs.python.org/3/library/asyncio-task.html#asyncio.gather), this collects bunch of Future objects in one place
 and waits for all of them to finish. 
 
 ### Common gotchas
 
-now let's simulate learning and let's make mistake in above script and try to debug it,
+Now let's simulate real process of learning and let's make mistake in above script and try to debug it,
 this should be really helpful for demonstration purposes.
 
-Let's break our fetch() function
+This is how sample broken async function looks like:
 
 {% highlight python %}
 # WARNING! BROKEN CODE DO NOT COPY PASTE
@@ -252,7 +180,7 @@ async def fetch(url):
 
 {% endhighlight %}
 
-Above version of fetch() is broken, but it's not that easy to figure out why
+This code is broken, but it's not that easy to figure out why
 if you dont know much about asyncio. Even if you know Python well but you dont
 know asyncio or aiohttp well you'll be in trouble to figure out what happens.
 
@@ -267,13 +195,21 @@ pawel@pawel-VPCEH390X ~/p/l/benchmarker> ./bench.py
 
 {% endhighlight %}
 
-what happens here? You expected to get response objects after all processing is done, but here you actually get
-bunch of generators, why is that? It happens because as I've mentioned earlier response.read() is async
-operation, this means that in asyncio it returns generator. This generator still needs to be called and
-executed, and this does not happen by default. yield from in Python 3.4 and await in Python 3.5 were
-added exactly for this purpose: to actually iterate over generator function. Fix to above error
-is just adding await before response.read().
+What happens here? You expected to get response objects after all processing is done, but here you actually get
+bunch of generators, why is that? 
 
+It happens because as I've mentioned earlier `response.read()` is async
+operation, this means that it does not return result immediately, it just returns generator. 
+This generator still needs to be called and
+executed, and this does not happen by default, `yield from` in Python 3.4 and `await` in Python 3.5 were
+added exactly for this purpose: to actually iterate over generator function. Fix to above error
+is just adding await before `response.read()`.
+
+
+{% highlight python %}
+    # async operation must be preceded by await 
+    return await response.read() # NOT: return response.read()
+{% endhighlight %}
 Let's break our code in some other way.
 
 {% highlight python %}
@@ -327,16 +263,21 @@ it should be:
     responses = await asyncio.gather(*tasks)
 {% endhighlight %}
 
+I guess main lesson from those mistakes is: always remember about using "await" if
+you're actually awaiting something.
 
-## Trash localhost
+## Sync vs Async
 
 Finally time for some fun. Let's check if async is really worth the hassle. What's the
 difference in efficiency between asynchronous client and blocking client? How many
-requests per minute can I send with my async client? With this questions in mind
-I set up simple (async) aiohttp server. It is going to imitate real network conditions. 
+requests per minute can I send with my async client? 
+
+With this questions in mind I set up simple (async) aiohttp server. 
 My server is going to read full html text of Frankenstein by Marry Shelley. It will
 add random delays between responses. Some responses will have zero delay, and some will
-have maxium of 4 seconds delay.
+have maximum of 3 seconds delay. This should resemble real applications, few
+apps respond to all requests with same latency, usually latency differs
+from response to response.
 
 Server code looks like this:
 
@@ -368,7 +309,7 @@ web.run_app(app)
 
 {% endhighlight %}
 
-Synchronous client is like this
+Synchronous client looks like this:
 
 {% highlight python %}
 
@@ -384,14 +325,21 @@ for i in range(r):
 
 {% endhighlight %}
 
-How long will it take to run this? On my machine running above synchronous client
-took 2:45.54 minutes. How long will async client take? Well on my machine it took
-0:03.48 seconds. It is interesting that it took exactly as long as longest delay 
+How long will it take to run this? 
+
+On my machine running above synchronous client took 2:45.54 minutes. 
+
+My async code looks just like above code samples, you can see it in 
+[full here](https://bpaste.net/show/28089ddba63a). How long will async client take? 
+
+On my machine it took 0:03.48 seconds. 
+
+It is interesting that it took exactly as long as longest delay 
 from my server. If you look into messages printed by client script you can see how
-great async HTTP client is. Some responses got 3 seconds delay. In synchronous client
+great async HTTP client is. Some responses had 0 delay but others got 3 seconds delay. In synchronous client
 they would be blocking and waiting, your machine would simply stay idle for this time. 
-Async client does not waste it's time, when something is delayed it simply does
-something else, processes all other responses. You can see this clearly in logs, first there
+Async client does not waste time, when something is delayed it simply does
+something else, issues other requests or processes all other responses. You can see this clearly in logs, first there
 are responses with 0 delay, then after they arrrived you can see responses with 1 seconds delay, 
 and so on until most delayed responses arrive. 
 
@@ -401,8 +349,17 @@ Now that we know our async client is better let's try to test its limits and try
 localhost. I'm going to start with sending 1k async requests. I'm curious how many requests
 my client can handle.
 
+{% highlight bash %}
+
+> time python3 bench.py
+
+2.68user 0.24system 0:07.14elapsed 40%CPU (0avgtext+0avgdata 53704maxresident)k
+0inputs+0outputs (0major+14156minor)pagefaults 0swaps
+
+{% endhighlight %}
+
 So 1k requests take 7 seconds, pretty nice! How about 10k? Trying to make 10k requests 
-unfortunatenly fails with 
+unfortunately fails...
 
 
 {% highlight python %}
@@ -417,15 +374,17 @@ OSError: [Errno 24] Too many open files
 
 {% endhighlight %}
 
-That's bad, seems like I stumbled across 10k connections problem. How many files
-are too many? I checked with python resource module and it seems like it's around 1024.
+That's bad, seems like I stumbled across [10k connections problem](http://www.webcitation.org/6ICibHuyd). 
+
+It says "too many open files", and probably refers to number of open sockets.
+Why does it call them files? Sockets are just file descriptors, operating systems limit number of open sockets
+allowed. How many files are too many? I checked with python resource module and it seems like it's around 1024.
 How can we bypass this? Primitive way is just increasing limit of open files. But this
 is probably not the good way to go. Much better way is just adding some synchronization
 in your client limiting number of concurrent requests it can process. I'm going to do this
-by adding asyncio.Sempaphore() with max tasks of 1000 (so close to open files limit).
+by adding [`asyncio.Semaphore()`](https://docs.python.org/3/library/asyncio-sync.html#asyncio.Semaphore) with max tasks of 1000.
 
-
-Modified run() function looks like this now:
+Modified `run()` function looks like this now:
 
 {% highlight python %}
 async def run(loop,  r):
@@ -444,29 +403,30 @@ async def run(loop,  r):
 
 {% endhighlight %}
 
-At this point I can process 10k urls. It takes 23 seconds, so pretty nice.
+At this point I can process 10k urls. It takes 23 seconds, pretty nice!
 
-How about trying 100 000? This really makes my computer work hard but it
-actually seems pretty nice. Server turns out to be suprisingly stable although
+How about 100 000? This really makes my computer work hard but suprisingly 
+it works ok. Server turns out to be suprisingly stable although
 you can see that ram usage gets pretty high at this point, cpu usage is around 
 100% all the time. What I find interesting is that my server takes significantly less cpu than client.
-Overall there is 1k connections is zero problem for my test server, here's snapshot
-of ps output.
+Here's snapshot of linux `ps` output.
 
 {% highlight python %}
 
 pawel@pawel-VPCEH390X ~/p/l/benchmarker> ps ua | grep python
+
+USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
 pawel     2447 56.3  1.0 216124 64976 pts/9    Sl+  21:26   1:27 /usr/local/bin/python3.5 ./test_server.py
 pawel     2527  101  3.5 674732 212076 pts/0   Rl+  21:26   2:30 /usr/local/bin/python3.5 ./bench.py
 
 {% endhighlight %}
 
 Overall it took around 5 minutes before it crashed for some
-reason, since it generated around 100k lines of output it's not that easy
-to pinpoint traceback, seems like some responses are not closed, whether this 
-is because of some error from my server or something in client?
+reason. It generated around 100k lines of output so it's not that easy
+to pinpoint traceback, seems like some responses are not closed, is it 
+because of some error from my server or something in client?
 
-After scrolling for couple of seconds I found this exception
+After scrolling for couple of seconds I found this exception in client logs.
 
 {% highlight python %}
 
@@ -481,17 +441,13 @@ OSError: [Errno 99] Cannot assign requested address
 {% endhighlight %}
 
 My hypothesis is that test server went down for some split second,
-and this caused some client error that was printed at the end, 
-so probably I need to add errbacks to aiohttp requests. Overall it's really
-not bad though, 5 minutes for 100 000 requests? this makes around 20k
+and this caused some client error that was printed at the end. 
+
+Overall it's really not bad, 5 minutes for 100 000 requests? This makes around 20k
 requests per minute. Pretty powerful if you ask me.
 
 Finally I'm going to try 1 million requests. I really hope my laptop is not going
-to explode and burn when processing that. For this amount of requests I reduced
-delays to range between 0 and 1.
-
-I know at this point I should probably think about adding some rate limit in my test server.
-Seems like it does run into some trouble once in a while.
+to explode when testing that. For this amount of requests I reduced delays from server to range between 0 and 1.
 
 1 000 000 requests finished in 52 minutes
 
@@ -503,6 +459,17 @@ Seems like it does run into some trouble once in a while.
 
 so it means my client made around 19230 requests per minute. Not bad isn't it? Note that
 capabilities of my client are limited by server responding with delay of 0 and 1 in this 
-scenario, seems like my test server also crashed silently couple of times. I wonder
-how it compares to other languages and async frameworks?
+scenario, seems like my test server also crashed silently couple of times. 
+
+## Epilogue
+
+You can see that asynchronous HTTP clients can be pretty powerful. Performing
+1 million requests from async client is not difficult, and the client performs really well in comparison
+to synchronous code.
+
+I wonder how it compares to other languages and async frameworks? Perhaps in some
+future post I could compare [Twisted Treq](https://github.com/twisted/treq) with 
+aiohttp. There is also question how many concurrent requests can be issued by 
+async libraries in other languages. E.g. what would be results of benchmarks
+for some Java async frameworks? Or C++ frameworks? Or some Rust HTTP clients? 
 
