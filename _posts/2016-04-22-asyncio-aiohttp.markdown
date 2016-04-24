@@ -298,6 +298,12 @@ async def hello(request):
     delay = random.randint(0, 3)
     await asyncio.sleep(delay)
     headers = {"content_type": "text/html", "delay": str(delay)}
+    # opening file is not async here, so it may block, to improve
+    # efficiency of this you can consider using asyncio Executors
+    # that will delegate file operation to separate thread or process
+    # and improve performance
+    # https://docs.python.org/3/library/asyncio-eventloop.html#executor
+    # https://pymotw.com/3/asyncio/executors.html
     with open("frank.html", "rb") as html_body:
         print("{}: {} delay: {}".format(n, request.path, delay))
         response = web.Response(body=html_body.read(), headers=headers)
@@ -329,8 +335,7 @@ How long will it take to run this?
 
 On my machine running above synchronous client took 2:45.54 minutes. 
 
-My async code looks just like above code samples, you can see it in 
-[full here](https://bpaste.net/show/28089ddba63a). How long will async client take? 
+My async code looks just like above code samples above. How long will async client take? 
 
 On my machine it took 0:03.48 seconds. 
 
@@ -384,26 +389,52 @@ is probably not the good way to go. Much better way is just adding some synchron
 in your client limiting number of concurrent requests it can process. I'm going to do this
 by adding [`asyncio.Semaphore()`](https://docs.python.org/3/library/asyncio-sync.html#asyncio.Semaphore) with max tasks of 1000.
 
-Modified `run()` function looks like this now:
+Modified client code looks like this now:
 
 {% highlight python %}
+# modified fetch function with semaphore
+import random
+import asyncio
+from aiohttp import ClientSession
+
+async def fetch(url):
+    async with ClientSession() as session:
+        async with session.get(url) as response:
+            delay = response.headers.get("DELAY")
+            date = response.headers.get("DATE")
+            print("{}:{} with delay {}".format(date, response.url, delay))
+            return await response.read()
+
+
+async def bound_fetch(sem, url):
+    # getter function with semaphore
+    async with sem:
+        await fetch(url)
+
+
 async def run(loop,  r):
     url = "http://localhost:8080/{}"
     tasks = []
+    # create instance of Semaphore
     sem = asyncio.Semaphore(1000)
     for i in range(r):
-        task = asyncio.ensure_future(fetch(url.format(i)))
-        await sem.acquire()
-        task.add_done_callback(lambda t: sem.release())
+        # pass Semaphore to every GET request
+        task = asyncio.ensure_future(bound_fetch(sem, url.format(i)))
         tasks.append(task)
 
     responses = asyncio.gather(*tasks)
-    responses.add_done_callback(print_responses)
     await responses
+
+number = 10000
+loop = asyncio.get_event_loop()
+
+future = asyncio.ensure_future(run(loop, number))
+loop.run_until_complete(future)
 
 {% endhighlight %}
 
-At this point I can process 10k urls. It takes 23 seconds, pretty nice!
+At this point I can process 10k urls. It takes 23 seconds and returns some exceptions but overall
+it's pretty nice!
 
 How about 100 000? This really makes my computer work hard but suprisingly 
 it works ok. Server turns out to be suprisingly stable although
@@ -440,8 +471,11 @@ OSError: [Errno 99] Cannot assign requested address
 
 {% endhighlight %}
 
-My hypothesis is that test server went down for some split second,
-and this caused some client error that was printed at the end. 
+I dont really know what happens here. My initial hypothesis is that test server went down for some split second,
+and this caused some client error that was printed at the end. [One of the readers](https://news.ycombinator.com/item?id=11557672)
+suggests that this exception may be caused by OS running out of free ephemereal ports. I added semaphore
+earlier so number of concurrent connections should be maximum 1k, but some sockets may still be 
+closing and not available for kernel to assign.
 
 Overall it's really not bad, 5 minutes for 100 000 requests? This makes around 20k
 requests per minute. Pretty powerful if you ask me.
@@ -451,7 +485,7 @@ to explode when testing that. For this amount of requests I reduced delays from 
 
 1 000 000 requests finished in 52 minutes
 
-{% highlight shell %}
+{% highlight bash %}
 1913.06user 1196.09system 52:06.87elapsed 99%CPU (0avgtext+0avgdata 5194260maxresident)k
 265144inputs+0outputs (18692major+2528207minor)pagefaults 0swaps
 
@@ -473,3 +507,8 @@ aiohttp. There is also question how many concurrent requests can be issued by
 async libraries in other languages. E.g. what would be results of benchmarks
 for some Java async frameworks? Or C++ frameworks? Or some Rust HTTP clients? 
 
+### _EDITS (24/04/2016)_
+
+* improved code sample that uses Semaphore
+* added comment about using executor when opening file
+* added link to HN comment about EADDRNOTAVAIL exception
