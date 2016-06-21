@@ -2,7 +2,7 @@
 title: Python programming, web, data science
 email: pawelmhm+github_blog@gmail.com
 description: > # this means to ignore newlines until "baseurl:"
-    Blog about x,y and z.
+    Blog about Internet, programming, Python and other matters.
 baseurl: "" # the subpath of your site, e.g. /blog/
 url: "http://pawelmhm.github.io" # the base hostname & protocol for your site
 github_username:  pawelmhm

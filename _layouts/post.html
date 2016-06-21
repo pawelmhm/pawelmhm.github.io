@@ -13,17 +13,25 @@ layout: default
             "keywords": "{{page.keywords}}",
             "author": {
                 "@type": "Person",
+                "@context": "http://schema.org",
                 "name": "{{site.author}}",
                 "jobTitle": "software engineer",
                 "email": "{{site.email}}",
-                "address": "Krakow, Poland"
+                "address": "Krakow, Poland",
+                "image": "https://avatars1.githubusercontent.com/u/2700942?v=3&s=460"
             },
             "description": {{page.excerpt | jsonify}},
             "mainEntityOfPage": {
                 "@type": "Blog",
-                "url": "{{site.url}}"
+                "@context": "http://schema.org",
+                "url": "{{site.url}}",
+                "about": {{site.description | jsonify}}
             },
-            "image": "https://avatars1.githubusercontent.com/u/2700942?v=3&s=460"
+            "publisher": {
+                "@context": "http://schema.org",
+                "@type": "Person",
+                "name": "{{site.author}}"
+            }
         }
         </script>
 
