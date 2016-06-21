@@ -5,6 +5,7 @@ date:   2016-04-22 6:00
 categories: asyncio python aiohttp
 author: Paweł Miech
 keywords: asyncio, aiohttp, python
+edited: 2016-04-24 7:30
 ---
 
 In this post I'd like to test limits of [python aiohttp](http://aiohttp.readthedocs.org/en/stable/) and check its performance  in 

@@ -1,20 +1,44 @@
 ---
 layout: default
 ---
-<div class="post" itemscope itemtype="http://schema.org/BlogPosting">
+<div class="post">
+        <script type="application/ld+json">
+        {
+            "@context": "http://schema.org",
+            "@type": "BlogPosting",
+            "headline": "{{page.title}}",
+            "datePublished": "{{page.date}}",
+            "dateCreated": "{{page.date}}",
+            "dateModified": "{{page.edited}}",
+            "keywords": "{{page.keywords}}",
+            "author": {
+                "@type": "Person",
+                "name": "{{site.author}}",
+                "jobTitle": "software engineer",
+                "email": "{{site.email}}",
+                "address": "Krakow, Poland"
+            },
+            "description": {{page.excerpt | jsonify}},
+            "mainEntityOfPage": {
+                "@type": "Blog",
+                "url": "{{site.url}}"
+            },
+            "image": "https://avatars1.githubusercontent.com/u/2700942?v=3&s=460"
+        }
+        </script>
 
   <header class="post-header">
-    <h1 class="post-title" itemprop='headline'>{{ page.title }}</h1>
+    <h1 class="post-title" >{{ page.title }}</h1>
     <div class="post-meta">
-        <span itemprop='datePublished'>{{ page.date | date: "%b %-d, %Y" }}</span>
+        <span>{{ page.date | date: "%b %-d, %Y" }}</span>
         <span>- by</span>
-        <span itemprop='author'>{% if page.author %}{{ page.author }}{% else site.author %}{% endif %}</span>
+        <span>{% if page.author %}{{ page.author }}{% else site.author %}{% endif %}</span>
         <span>- about:</span>
-        <span itemprop='keywords'>{% if page.keywords %}{{ page.keywords }}{% endif %}</span>
+        <span>{% if page.keywords %}{{ page.keywords }}{% endif %}</span>
     </div>
   </header>
 
-  <article class="post-content" itemprop='articleBody'>
+  <article class="post-content">
     {{ content }}
   </article>
 
