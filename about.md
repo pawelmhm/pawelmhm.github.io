@@ -4,17 +4,15 @@ title: About
 permalink: /about/
 ---
 
-Paweł Miech - (mostly) Python Developer. 
+Paweł Miech - Software Engineer
 
-I know something about: 
-
-Python, JavaScript, Scrapy, Twisted, Django, Flask, Python-Pandas, R,
-Ancient Greek Philosophy (especially Stoics and Plato).
+Python, JavaScript, Scrapy, Twisted, Django, Flask, Python-Pandas, R.
 
 I live in Kraków, Poland. 
 
-Projects I contribute to:
+Social:
 
-* Splash - [Lightweight, scriptable browser as a service with an HTTP API](https://github.com/scrapinghub/splash)
-* [Scrapy Realtime](https://github.com/scrapinghub/scrapyrt)
+* [LinkedIn](https://www.linkedin.com/in/pawe%C5%82-miech-49a5531a)
+* [Github](https://github.com/pawelmhm)
+* [Stack Overflow](http://stackoverflow.com/users/1757620/pawel-miech)
 
