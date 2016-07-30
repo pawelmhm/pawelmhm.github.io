@@ -20,9 +20,9 @@ HTTP 2 and HTTP 1.1? Will my demo site work quicker in HTTP2?
 
 ## Hello HTTP2
 
-Let's start with saying Hello to HTTP 2 in Python Twisted.
+Let's start with saying "Hello world!" in HTTP 2 from Python Twisted.
 
-Twisted web already supports Python 3 so you can use 3 no problem.
+[Twisted web server](https://twistedmatrix.com/documents/current/web/howto/using-twistedweb.html) already supports Python 3 so you can use 3 no problem.
 For this blog post I'm going to use Python 3.4.3. I'm assuming you have Twisted 16.3.0 with all 
 HTTP2 dependencies installed. There is some minor bug in parsing optional dependencies in Python 3, so
 if you're using 3 you may need to install "h2" and "priority" packages
@@ -30,7 +30,7 @@ from pip manually instead of running `pip install twisted[h2]`.
 
 Our website will serve content over HTTPS. While HTTP2 protocol itself does not require TLS, most client implementations
 (especially mainstream browsers) do require HTTPS. This means we need to start building our website
-with getting self signed certificates for local development. To generate sample self signed certificate you need to run following command:
+with getting self signed certificates for local development. To generate self signed certificate you need to run following command:
 
 {% highlight bash %}
 # generate private key
@@ -61,6 +61,7 @@ class Index(Resource):
 {% endhighlight %}
 
 Above code creates simple resource that will handle all request to root of website. 
+
 We now need to tell Twisted to listen on some
 specific port and serve our resource there using TLS. To actually launch
 our site on connection speaking SSL we'll use [Twisted endpoints](https://twistedmatrix.com/documents/current/core/howto/endpoints.html). 
@@ -75,8 +76,8 @@ Here's how you properly create instance of https website in Twisted:
 # create instance of our web resource Index is instance of twisted.web.Resource
 site = server.Site(Index())
 
-# specify port, private key and public certificate
-endpoint_spec = "ssl:port=8080:privateKey=key.pem:extraCertChain=cert.pem"
+# specify port and certificate
+endpoint_spec = "ssl:port=8080:privateKey=privkey.pem:certKey=cert.pem"
 
 # create listening endpoint
 server = endpoints.serverFromString(reactor, endpoint_spec)
@@ -109,7 +110,7 @@ class Index(Resource):
 if __name__ == "__main__":
     log.startLogging(sys.stdout)
     site = server.Site(Index())
-    endpoint_spec = "ssl:port=8080:privateKey=key.pem:extraCertChain=cert.pem"
+    endpoint_spec = "ssl:port=8080:privateKey=privkey.pem:certKey=cert.pem"
     server = endpoints.serverFromString(reactor, endpoint_spec)
     server.listen(site)
     reactor.run()
@@ -255,7 +256,7 @@ if __name__ == "__main__":
     root.putChild(b"", Index())
     root.putChild(b"book", Book())
     site = server.Site(root)
-    endpoint_spec = "ssl:port=8080:privateKey=key.pem:extraCertChain=cert.pem"
+    endpoint_spec = "ssl:port=8080:privateKey=privkey.pem:certKey=cert.pem"
     server = endpoints.serverFromString(reactor, endpoint_spec)
     server.listen(site)
     reactor.run()
@@ -388,5 +389,5 @@ To sum up HTTP2 client is faster, but it also works slightly differently. If you
 HTTP2 in same way as HTTP1.1 (just send one request after another within one connection) performance
 difference would be small or non-existent. It's also worth noting that I didnt go into details of
 other HTTP2 improvements (such as headers compression or server push). These other benefits of HTTP2
-may be equaly relevant as multiplexing of messages over one connection. In any case it's great that 
-you can use it from Python.
+are certainly equally important as multiplexing of messages over one connection. I'm not sure if you
+can use server push from Twisted though.
