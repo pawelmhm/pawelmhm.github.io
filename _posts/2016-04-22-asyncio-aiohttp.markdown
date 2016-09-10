@@ -5,7 +5,7 @@ date:   2016-04-22 6:00
 categories: asyncio python aiohttp
 author: Paweł Miech
 keywords: asyncio, aiohttp, python
-edited: 2016-04-24 7:30
+edited: 2016-09-10 7:30
 ---
 
 In this post I'd like to test limits of [python aiohttp](http://aiohttp.readthedocs.org/en/stable/) and check its performance  in 
@@ -137,21 +137,24 @@ To collect bunch of responses you probably need to write something along the lin
 import asyncio
 from aiohttp import ClientSession
 
-async def fetch(url):
-    async with ClientSession() as session:
-        async with session.get(url) as response:
-            return await response.read()
+async def fetch(url, session):
+    async with session.get(url) as response:
+        return await response.read()
 
 async def run(loop,  r):
     url = "http://localhost:8080/{}"
     tasks = []
-    for i in range(r):
-        task = asyncio.ensure_future(fetch(url.format(i)))
-        tasks.append(task)
 
-    responses = await asyncio.gather(*tasks)
-    # you now have all response bodies in this variable
-    print(responses)
+    # Fetch all responses within one Client session,
+    # keep connection alive for all requests.
+    async with ClientSession() as session:
+        for i in range(r):
+            task = asyncio.ensure_future(fetch(url.format(i), session))
+            tasks.append(task)
+
+        responses = await asyncio.gather(*tasks)
+        # you now have all response bodies in this variable
+        print(responses)
 
 def print_responses(result):
     print(result)
@@ -352,7 +355,10 @@ and so on until most delayed responses arrive.
 ## Testing the limits
 
 Now that we know our async client is better let's try to test its limits and try to crash our
-localhost. I'm going to start with sending 1k async requests. I'm curious how many requests
+localhost. I'm going to reset server delays to zero now (so no more random.choice of delays)
+and just see how fast we can go.
+
+I'm going to start with sending 1k async requests. I'm curious how many requests
 my client can handle.
 
 {% highlight bash %}
@@ -398,19 +404,18 @@ import random
 import asyncio
 from aiohttp import ClientSession
 
-async def fetch(url):
-    async with ClientSession() as session:
-        async with session.get(url) as response:
-            delay = response.headers.get("DELAY")
-            date = response.headers.get("DATE")
-            print("{}:{} with delay {}".format(date, response.url, delay))
-            return await response.read()
+async def fetch(url, session):
+    async with session.get(url) as response:
+        delay = response.headers.get("DELAY")
+        date = response.headers.get("DATE")
+        print("{}:{} with delay {}".format(date, response.url, delay))
+        return await response.read()
 
 
-async def bound_fetch(sem, url):
-    # getter function with semaphore
+async def bound_fetch(sem, url, session):
+    # Getter function with semaphore.
     async with sem:
-        await fetch(url)
+        await fetch(url, session)
 
 
 async def run(loop,  r):
@@ -418,13 +423,17 @@ async def run(loop,  r):
     tasks = []
     # create instance of Semaphore
     sem = asyncio.Semaphore(1000)
-    for i in range(r):
-        # pass Semaphore to every GET request
-        task = asyncio.ensure_future(bound_fetch(sem, url.format(i)))
-        tasks.append(task)
 
-    responses = asyncio.gather(*tasks)
-    await responses
+    # Create client session that will ensure we dont open new connection
+    # per each request.
+    async with ClientSession() as session:
+        for i in range(r):
+            # pass Semaphore and session to every GET request
+            task = asyncio.ensure_future(bound_fetch(sem, url.format(i), session))
+            tasks.append(task)
+
+        responses = asyncio.gather(*tasks)
+        await responses
 
 number = 10000
 loop = asyncio.get_event_loop()
@@ -453,48 +462,29 @@ pawel     2527  101  3.5 674732 212076 pts/0   Rl+  21:26   2:30 /usr/local/bin/
 
 {% endhighlight %}
 
-Overall it took around 5 minutes before it crashed for some
-reason. It generated around 100k lines of output so it's not that easy
-to pinpoint traceback, seems like some responses are not closed, is it 
-because of some error from my server or something in client?
-
-After scrolling for couple of seconds I found this exception in client logs.
+Overall it took around 53 seconds to process.
 
 {% highlight python %}
-
-  File "/usr/local/lib/python3.5/asyncio/futures.py", line 387, in __iter__
-    return self.result()  # May raise too.
-  File "/usr/local/lib/python3.5/asyncio/futures.py", line 274, in result
-    raise self._exception
-  File "/usr/local/lib/python3.5/asyncio/selector_events.py", line 411, in _sock_connect
-    sock.connect(address)
-OSError: [Errno 99] Cannot assign requested address
+53.86user 1.58system 0:55.53elapsed 99%CPU (0avgtext+0avgdata 419216maxresident)k
+0inputs+0outputs (0major+110195minor)pagefaults 0swaps
 
 {% endhighlight %}
 
-I dont really know what happens here. My initial hypothesis is that test server went down for some split second,
-and this caused some client error that was printed at the end. [One of the readers](https://news.ycombinator.com/item?id=11557672)
-suggests that this exception may be caused by OS running out of free ephemereal ports. I added semaphore
-earlier so number of concurrent connections should be maximum 1k, but some sockets may still be 
-closing and not available for kernel to assign.
-
-Overall it's really not bad, 5 minutes for 100 000 requests? This makes around 20k
-requests per minute. Pretty powerful if you ask me.
+Pretty powerful if you ask me.
 
 Finally I'm going to try 1 million requests. I really hope my laptop is not going
-to explode when testing that. For this amount of requests I reduced delays from server to range between 0 and 1.
+to explode when testing that. 
 
-1 000 000 requests finished in 52 minutes
+1 000 000 requests finished in 9 minutes. 
 
 {% highlight bash %}
-1913.06user 1196.09system 52:06.87elapsed 99%CPU (0avgtext+0avgdata 5194260maxresident)k
-265144inputs+0outputs (18692major+2528207minor)pagefaults 0swaps
+
+530.86user 13.81system 9:05.17elapsed 99%CPU (0avgtext+0avgdata 3811640maxresident)k
+0inputs+0outputs (0major+942576minor)pagefaults 0swaps
 
 {% endhighlight %}
 
-so it means my client made around 19230 requests per minute. Not bad isn't it? Note that
-capabilities of my client are limited by server responding with delay of 0 and 1 in this 
-scenario, seems like my test server also crashed silently couple of times. 
+It means average request per minute rate of 111 111. Impressive.
 
 ## Epilogue
 
@@ -513,3 +503,10 @@ for some Java async frameworks? Or C++ frameworks? Or some Rust HTTP clients?
 * improved code sample that uses Semaphore
 * added comment about using executor when opening file
 * added link to HN comment about EADDRNOTAVAIL exception
+
+### _EDITS (10/09/2016)_
+
+Earlier version of this post contained problematic usage of ClientSession that caused
+client to crash. You can find this older version of article
+[here](https://github.com/pawelmhm/pawelmhm.github.io/blob/23bd0ee3d53584bfac3fae7a956f8dd20bc7882f/_posts/2016-04-22-asyncio-aiohttp.markdown). 
+For more details about this issue see this [GitHub ticket](https://github.com/KeepSafe/aiohttp/issues/1142).
