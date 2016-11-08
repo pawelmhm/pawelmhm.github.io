@@ -1,0 +1,76 @@
+---
+layout: post
+title:  "Building dating apps for robots with aiohttp"
+date:   2016-08-18 9:15:00
+categories: python aiohttp websockets asyncio
+author: Pawel Miech
+keywords: python aiohttp websockets
+---
+
+In this post I'm going to create simple dating app for robots in Python using aiohttp.
+App will be for robots because it will respond with bunch of preprogrammed
+responses. 
+
+I'm going to use aiohttp and asyncio on Python 3. Aiohttp supports websockets
+out of the box without the need to install any library. There is good documentation
+for websockets [here](http://aiohttp.readthedocs.io/en/stable/web.html#websockets), there is also nice
+demo for simple chat application in [github aiohttp repo](https://github.com/KeepSafe/aiohttp/tree/master/demos/chat).
+It's important to note however that it doesn't support all fallbacks used by some JS libraries if browser
+does not support websocket connection (e.g. long polling). 
+
+### Getting started with websocket
+
+Let's begin by writing simplest possible websocket handler. It will simply respond
+to every message with "hello world".
+
+{% highlight python %}
+from aiohttp import web
+
+
+async def hello(request):
+    # create instance of websocket response
+    ws = web.WebSocketResponse()
+    # prepare proper websocket connection, this can raise
+    await ws.prepare(request)
+    msg = await ws.receive()
+    print("got message {}".format(msg))
+    ws.send_str("hello world!")
+    return ws
+
+
+app = web.Application()
+app.router.add_route("GET", "/", hello)
+web.run_app(app)
+
+{% endhighlight %}
+
+To test our hello world app we'll use [wsdump.py](https://github.com/liris/websocket-client) which is quick and easy
+command line client for websockets. My test will look like this:
+
+{% highlight python %}
+
+$ wsdump.py ws://localhost:8080
+Press Ctrl+C to quit
+> hello!
+< hello world!
+> nice to meet you!
+... silence
+{% endhighlight %}
+
+As you see we now have working and responding websockets application. It doesn't do much
+yet, but it shows the basics. The above code sample does following things:
+
+* create websocket request handler (asycn def hello), inside the handler:
+* create instance of websocket response
+* prepare connection (websocket handshake)
+* await data flowing from client websocket
+* send response
+
+After creating handler you need to create instance of web.Application, register handler for a given route, 
+then start app.
+
+The problem with above code is that it returns immediately after receiving first message. If you want
+to send one message after another it wont work. To actually get some communication you need to add 
+while loop and make your handler wait for messages for indefinite amount of time.
+
+
