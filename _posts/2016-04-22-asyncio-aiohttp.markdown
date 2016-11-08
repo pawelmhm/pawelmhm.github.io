@@ -5,7 +5,7 @@ date:   2016-04-22 6:00
 categories: asyncio python aiohttp
 author: Paweł Miech
 keywords: asyncio, aiohttp, python
-edited: 2016-09-10 7:30
+edited: 2016-11-08 7:30
 ---
 
 In this post I'd like to test limits of [python aiohttp](http://aiohttp.readthedocs.org/en/stable/) and check its performance  in 
@@ -40,7 +40,7 @@ In synchronous world you just do:
 
 import requests
 
-def hello()
+def hello():
     return requests.get("http://httpbin.org/get")
 
 print(hello())
@@ -56,15 +56,15 @@ How does that look in aiohttp?
 import asyncio
 from aiohttp import ClientSession
 
-async def hello():
+async def hello(url):
     async with ClientSession() as session:
-        async with session.get("http://httpbin.org/headers") as response:
+        async with session.get(url) as response:
             response = await response.read()
             print(response)
 
 loop = asyncio.get_event_loop()
 
-loop.run_until_complete(hello())
+loop.run_until_complete(hello("http://httpbin.org/headers"))
 
 {% endhighlight %}
 
@@ -141,7 +141,7 @@ async def fetch(url, session):
     async with session.get(url) as response:
         return await response.read()
 
-async def run(loop,  r):
+async def run(r):
     url = "http://localhost:8080/{}"
     tasks = []
 
@@ -160,7 +160,7 @@ def print_responses(result):
     print(result)
 
 loop = asyncio.get_event_loop()
-future = asyncio.ensure_future(run(loop, 4))
+future = asyncio.ensure_future(run(4))
 loop.run_until_complete(future)
 
 {% endhighlight %}
@@ -219,7 +219,7 @@ Let's break our code in some other way.
 {% highlight python %}
 
 # WARNING! BROKEN CODE DO NOT COPY PASTE
-async def run(loop,  r):
+async def run(r):
     url = "http://localhost:8080/{}"
     tasks = []
     for i in range(r):
@@ -418,7 +418,7 @@ async def bound_fetch(sem, url, session):
         await fetch(url, session)
 
 
-async def run(loop,  r):
+async def run(r):
     url = "http://localhost:8080/{}"
     tasks = []
     # create instance of Semaphore
@@ -438,7 +438,7 @@ async def run(loop,  r):
 number = 10000
 loop = asyncio.get_event_loop()
 
-future = asyncio.ensure_future(run(loop, number))
+future = asyncio.ensure_future(run(number))
 loop.run_until_complete(future)
 
 {% endhighlight %}
@@ -510,3 +510,11 @@ Earlier version of this post contained problematic usage of ClientSession that c
 client to crash. You can find this older version of article
 [here](https://github.com/pawelmhm/pawelmhm.github.io/blob/23bd0ee3d53584bfac3fae7a956f8dd20bc7882f/_posts/2016-04-22-asyncio-aiohttp.markdown). 
 For more details about this issue see this [GitHub ticket](https://github.com/KeepSafe/aiohttp/issues/1142).
+
+### _EDITS (08/11/2016)_
+
+Fixed minor bugs in code samples: 
+
+* removed useless positional argument 'loop' to run()
+* added positional argument url to hello() async def
+* added missing colon in requests sync code sample
