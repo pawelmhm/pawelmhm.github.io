@@ -415,7 +415,7 @@ async def fetch(url, session):
 async def bound_fetch(sem, url, session):
     # Getter function with semaphore.
     async with sem:
-        await fetch(url, session)
+        return await fetch(url, session)
 
 
 async def run(r):
