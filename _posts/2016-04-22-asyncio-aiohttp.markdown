@@ -5,7 +5,7 @@ date:   2016-04-22 6:00
 categories: asyncio python aiohttp
 author: Paweł Miech
 keywords: asyncio, aiohttp, python
-edited: 2016-11-08 7:30
+edited: 2023-04-13 20:00
 ---
 
 In this post I'd like to test limits of [python aiohttp](http://aiohttp.readthedocs.org/en/stable/) and check its performance  in 
@@ -52,19 +52,17 @@ How does that look in aiohttp?
 
 {% highlight python %}
 
-#!/usr/local/bin/python3.5
+#!/usr/local/bin/python3.11.2
 import asyncio
 from aiohttp import ClientSession
 
-async def hello(url):
+async def hello(url: str):
     async with ClientSession() as session:
         async with session.get(url) as response:
             response = await response.read()
             print(response)
 
-loop = asyncio.get_event_loop()
-
-loop.run_until_complete(hello("http://httpbin.org/headers"))
+asyncio.run(hello("http://httpbin.org/headers"))
 
 {% endhighlight %}
 
@@ -86,8 +84,7 @@ operation starts, downloading request. Just as in case of client sessions respon
 explicitly, and context manager's `with` statement ensures it will be closed properly in all
 circumstances.
 
-To start your program you need to run it in event loop, so you need to create instance of asyncio
-loop and put task into this loop.
+To start your program you need to make a call to asyncio.run().
 
 It all does sound bit difficult but it's not that complex and looks logical if you spend
 some time trying to understand it.
@@ -107,66 +104,66 @@ for url in urls:
 This is really quick and easy, async will not be that easy, so you should always consider if something more complex
 is actually necessary for your needs. If your app works nice with synchronous code maybe there
 is no need to bother with async code? If you do need to bother with async code here's how you do
-that. Our `hello()` async function stays the same but we need to wrap it in asyncio [`Future`](https://docs.python.org/3/library/asyncio-task.html#future) object
+that. Our `hello()` async function stays the same but we need to wrap it in asyncio [`TaskGroup`](https://docs.python.org/3/library/asyncio-task.html) object
 and pass whole lists of Future objects as tasks to be executed in the loop.
 
 {% highlight python %}
+import asyncio
+from aiohttp import ClientSession
 
-loop = asyncio.get_event_loop()
+async def hello(url: str):
+    async with ClientSession() as session:
+        async with session.get(url) as response:
+            response = await response.text()
+            print(response)
 
-tasks = []
-# I'm using test server localhost, but you can use any url
-url = "http://localhost:8080/{}"
-for i in range(5):
-    task = asyncio.ensure_future(hello(url.format(i)))
-    tasks.append(task)
-loop.run_until_complete(asyncio.wait(tasks))
+async def main():
+    tasks = []
+    # I'm using test server localhost, but you can use any url
+    url = "http://localhost:8000/{}"
+    async with asyncio.TaskGroup() as group:
+        for i in range(10):
+            group.create_task(hello(url.format(i)))
+
+asyncio.run(main()) https://docs.python.org/3/library/asyncio-task.html
 
 {% endhighlight %}
 
 Now let's say we want to collect all responses in one list and do some 
 postprocessing on them. At the moment we're not keeping response body
-anywhere, we just print it, let's return this response, keep it in list, and 
-print all responses at the end.
+anywhere, we just print it, let's keep response in the list, and 
+print all responses at the end as JSON.
 
 To collect bunch of responses you probably need to write something along the lines of:
 
 {% highlight python %}
 
-#!/usr/local/bin/python3.5
 import asyncio
 from aiohttp import ClientSession
+import json
 
-async def fetch(url, session):
-    async with session.get(url) as response:
-        return await response.read()
-
-async def run(r):
-    url = "http://localhost:8080/{}"
-    tasks = []
-
-    # Fetch all responses within one Client session,
-    # keep connection alive for all requests.
+async def hello(url: str, results: list):
     async with ClientSession() as session:
-        for i in range(r):
-            task = asyncio.ensure_future(fetch(url.format(i), session))
-            tasks.append(task)
+        async with session.get(url) as response:
+            results.append({"response": await response.text(), "url": url})
 
-        responses = await asyncio.gather(*tasks)
-        # you now have all response bodies in this variable
-        print(responses)
 
-def print_responses(result):
-    print(result)
+async def main():
+    tasks = []
+    # I'm using test server localhost, but you can use any url
+    url = "http://localhost:8000/{}"
+    results = []
+    async with asyncio.TaskGroup() as group:
+        for i in range(10):
+            group.create_task(hello(url.format(i), results))
+    // print responses as json, you can then redirect output to file
+    // to view it
+    print(json.dumps(results))
 
-loop = asyncio.get_event_loop()
-future = asyncio.ensure_future(run(4))
-loop.run_until_complete(future)
 
+asyncio.run(main()) 
 {% endhighlight %}
 
-Notice usage of [`asyncio.gather()`](https://docs.python.org/3/library/asyncio-task.html#asyncio.gather), this collects bunch of Future objects in one place
-and waits for all of them to finish. 
 
 ### Common gotchas
 
@@ -214,61 +211,8 @@ is just adding await before `response.read()`.
     # async operation must be preceded by await 
     return await response.read() # NOT: return response.read()
 {% endhighlight %}
-Let's break our code in some other way.
 
-{% highlight python %}
-
-# WARNING! BROKEN CODE DO NOT COPY PASTE
-async def run(r):
-    url = "http://localhost:8080/{}"
-    tasks = []
-    for i in range(r):
-        task = asyncio.ensure_future(fetch(url.format(i)))
-        tasks.append(task)
-
-    responses = asyncio.gather(*tasks)
-    print(responses)
-
-{% endhighlight %}
-
-Again above code is broken but it's not easy to figure out why if you're just
-learning asyncio.
-
-Above produces following output:
-
-{% highlight python %}
-pawel@pawel-VPCEH390X ~/p/l/benchmarker> ./bench.py 
-<_GatheringFuture pending>
-Task was destroyed but it is pending!
-task: <Task pending coro=<fetch() running at ./bench.py:7> wait_for=<Future pending cb=[Task._wakeup()]> cb=[gather.<locals>._done_callback(0)() at /usr/local/lib/python3.5/asyncio/tasks.py:602]>
-Task was destroyed but it is pending!
-task: <Task pending coro=<fetch() running at ./bench.py:7> wait_for=<Future pending cb=[Task._wakeup()]> cb=[gather.<locals>._done_callback(1)() at /usr/local/lib/python3.5/asyncio/tasks.py:602]>
-Task was destroyed but it is pending!
-task: <Task pending coro=<fetch() running at ./bench.py:7> wait_for=<Future pending cb=[Task._wakeup()]> cb=[gather.<locals>._done_callback(2)() at /usr/local/lib/python3.5/asyncio/tasks.py:602]>
-Task was destroyed but it is pending!
-task: <Task pending coro=<fetch() running at ./bench.py:7> wait_for=<Future pending cb=[Task._wakeup()]> cb=[gather.<locals>._done_callback(3)() at /usr/local/lib/python3.5/asyncio/tasks.py:602]>
-
-{% endhighlight %}
-
-What happens here? If you examine your localhost logs you may see that requests are not reaching
-your server at all. Clearly no requests are performed. Print statement prints that
-responses variable contains `<_GatheringFuture pending>` object, and later it alerts that
-pending tasks were destroyed. Why is it happening? Again you forgot about await
-
-faulty line is this
-
-{% highlight python %}
-    responses = asyncio.gather(*tasks)
-{% endhighlight %}
-
-it should be:
-
-{% highlight python %}
-    responses = await asyncio.gather(*tasks)
-{% endhighlight %}
-
-I guess main lesson from those mistakes is: always remember about using "await" if
-you're actually awaiting something.
+Always remember about using "await" if you're actually awaiting something.
 
 ## Sync vs Async
 
@@ -400,7 +344,6 @@ Modified client code looks like this now:
 
 {% highlight python %}
 # modified fetch function with semaphore
-import random
 import asyncio
 from aiohttp import ClientSession
 
@@ -409,7 +352,7 @@ async def fetch(url, session):
         delay = response.headers.get("DELAY")
         date = response.headers.get("DATE")
         print("{}:{} with delay {}".format(date, response.url, delay))
-        return await response.read()
+        return await response.text()
 
 
 async def bound_fetch(sem, url, session):
@@ -419,7 +362,7 @@ async def bound_fetch(sem, url, session):
 
 
 async def run(r):
-    url = "http://localhost:8080/{}"
+    url = "http://localhost:8000/{}"
     tasks = []
     # create instance of Semaphore
     sem = asyncio.Semaphore(1000)
@@ -436,10 +379,7 @@ async def run(r):
         await responses
 
 number = 10000
-loop = asyncio.get_event_loop()
-
-future = asyncio.ensure_future(run(number))
-loop.run_until_complete(future)
+asyncio.run(run(number))
 
 {% endhighlight %}
 
@@ -518,3 +458,7 @@ Fixed minor bugs in code samples:
 * removed useless positional argument 'loop' to run()
 * added positional argument url to hello() async def
 * added missing colon in requests sync code sample
+
+### _EDITS_ (14/04/2023)
+
+Updated code to use more modern asyncio APIs (TaskGroups, asyncio.run() etc)
