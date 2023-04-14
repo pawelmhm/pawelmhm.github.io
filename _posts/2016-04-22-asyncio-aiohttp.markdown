@@ -134,29 +134,34 @@ postprocessing on them. At the moment we're not keeping response body
 anywhere, we just print it, let's keep response in the list, and 
 print all responses at the end as JSON.
 
-To collect bunch of responses you probably need to write something along the lines of:
+To collect several responses we will use asyncio [`Queue'](https://docs.python.org/3/library/asyncio-queue.html).
+Result of each download will be stored inside queue, at the end of processing
+results will be printed as JSON.
 
 {% highlight python %}
-
 import asyncio
 from aiohttp import ClientSession
 import json
 
-async def hello(url: str, results: list):
+async def hello(url: str, queue: asyncio.Queue):
     async with ClientSession() as session:
         async with session.get(url) as response:
-            results.append({"response": await response.text(), "url": url})
+            result = {"response": await response.text(), "url": url}
+            await queue.put(result)
 
 
 async def main():
-    tasks = []
     # I'm using test server localhost, but you can use any url
     url = "http://localhost:8000/{}"
     results = []
+    queue = asyncio.Queue()
     async with asyncio.TaskGroup() as group:
         for i in range(10):
-            group.create_task(hello(url.format(i), results))
-    # print responses as json, you can then redirect output to file
+            group.create_task(hello(url.format(i), queue))
+
+    while not queue.empty():
+        results.append(await queue.get())
+    
     print(json.dumps(results))
 
 
