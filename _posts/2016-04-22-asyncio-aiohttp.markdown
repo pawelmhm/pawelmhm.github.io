@@ -125,7 +125,7 @@ async def main():
         for i in range(10):
             group.create_task(hello(url.format(i)))
 
-asyncio.run(main()) https://docs.python.org/3/library/asyncio-task.html
+asyncio.run(main()) 
 
 {% endhighlight %}
 
@@ -156,8 +156,7 @@ async def main():
     async with asyncio.TaskGroup() as group:
         for i in range(10):
             group.create_task(hello(url.format(i), results))
-    // print responses as json, you can then redirect output to file
-    // to view it
+    # print responses as json, you can then redirect output to file
     print(json.dumps(results))
 
 
