@@ -134,7 +134,7 @@ postprocessing on them. At the moment we're not keeping response body
 anywhere, we just print it, let's keep response in the list, and 
 print all responses at the end as JSON.
 
-To collect several responses we will use asyncio [`Queue'](https://docs.python.org/3/library/asyncio-queue.html).
+To collect several responses we will use asyncio [`Queue`](https://docs.python.org/3/library/asyncio-queue.html).
 Result of each download will be stored inside queue, at the end of processing
 results will be printed as JSON.
 
