@@ -240,7 +240,6 @@ import random
 random.seed(1)
 
 async def hello(request):
-    name = request.match_info.get("name", "foo")
     n = datetime.now().isoformat()
     delay = random.randint(0, 3)
     await asyncio.sleep(delay)
@@ -257,8 +256,8 @@ async def hello(request):
     return response
 
 app = web.Application()
-app.router.add_route("GET", "/{name}", hello)
-web.run_app(app)
+app.add_routes([web.get("/{name}", hello)])
+web.run_app(app, port=8000)
 
 {% endhighlight %}
 
@@ -269,7 +268,7 @@ Synchronous client looks like this:
 import requests
 r = 100
 
-url = "http://localhost:8080/{}"
+url = "http://localhost:8000/{}"
 for i in range(r):
     res = requests.get(url.format(i))
     delay = res.headers.get("DELAY")
