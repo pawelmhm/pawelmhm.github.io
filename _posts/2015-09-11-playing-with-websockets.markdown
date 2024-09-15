@@ -97,7 +97,7 @@ if __name__ == "__main__":
     factory.protocol = SomeServerProtocol
     resource = WebSocketResource(factory)
     # websockets resource on "/ws" path
-    root.putChild(u"ws", resource)
+    root.putChild(b"ws", resource)
 
     site = Site(root)
     reactor.listenTCP(8080, site)
